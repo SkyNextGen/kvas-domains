@@ -3,7 +3,7 @@ name: build-kvas-list
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 3 * * 1" # Пн 03:00 UTC
+    - cron: "15 0 * * 2"
 
 jobs:
   build:
@@ -22,27 +22,44 @@ jobs:
         run: |
           python src/build.py
 
-      - name: Debug - list files
+      - name: Commit dist
         run: |
-          echo "==== repo root ===="
-          ls -la
-          echo "==== dist ===="
-          ls -la dist || true
-          echo "==== git status ===="
-          git status --porcelain
-
-      - name: Commit result
-        run: |
-          # добавим всё что появилось в dist
-          git add -A dist || true
+          git add -A dist
 
           if git diff --cached --quiet; then
             echo "No changes to commit"
-            exit 0
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git commit -m "update domains + report"
+            git push
           fi
 
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+      - name: Notify Telegram (always)
+        if: success()
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TG_CHAT_ID}" \
+            --data-urlencode text="$(cat dist/tg_message.txt)" >/dev/null
 
-          git commit -m "update inside-kvas.lst"
-          git push
+          curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendDocument" \
+            -F chat_id="${TG_CHAT_ID}" \
+            -F document=@dist/report.md \
+            -F caption="KVAS build report" >/dev/null
+
+      - name: Notify Telegram (failure)
+        if: failure()
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: |
+          RUN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TG_CHAT_ID}" \
+            --data-urlencode text="🚨 KVAS Domains — сборка упала ❌
+
+🔎 Подробности:
+${RUN_URL}" >/dev/null
