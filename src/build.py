@@ -442,6 +442,10 @@ def main():
     date_part = datetime.now(timezone.utc).strftime("%d.%m.%Y")
     time_part = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
 
+    # Тип запуска (ручной или по расписанию)
+    event_name = os.getenv("GITHUB_EVENT_NAME", "")
+    is_scheduled = event_name == "schedule"
+
     status_line = "🚀 KVAS Domains — сборка завершена успешно"
     if warnings:
         status_line = "🚀 KVAS Domains — сборка завершена (с предупреждениями)"
@@ -449,7 +453,12 @@ def main():
     tg = []
     tg.append(status_line + "\n\n")
     tg.append(f"🗓  {date_part}\n")
-    tg.append(f"🕒  {time_part}\n\n")
+    tg.append(f"🕒  {time_part}\n")
+    if is_scheduled:
+        tg.append("🗓 Плановый запуск: вторник 03:15 (MSK)\n")
+    else:
+        tg.append("🖱 Ручной запуск\n")
+    tg.append("\n")
 
     tg.append("━━━━━━━━━━━━━━━━━━\n")
     tg.append("📦 РЕЗУЛЬТАТ\n")
@@ -489,7 +498,7 @@ def main():
     with open(OUT_TG, "w", encoding="utf-8", newline="\n") as f:
         f.write("".join(tg))
 
-    # ---------- короткий вывод в Actions лог ----------
+    # ---------- вывод в Actions лог ----------
     print("==== SUMMARY ====")
     print(f"itdog total={len(itdog_set)} delta={fmt_delta(len(itdog_added), len(itdog_removed))}")
     print(f"v2fly extras total={len(v2_extras_set)} delta={fmt_delta(len(v2extras_added), len(v2extras_removed))} ok={v2_ok} fail={v2_fail}")
