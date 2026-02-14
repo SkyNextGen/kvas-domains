@@ -22,16 +22,27 @@ jobs:
         run: |
           python src/build.py
 
+      - name: Debug - list files
+        run: |
+          echo "==== repo root ===="
+          ls -la
+          echo "==== dist ===="
+          ls -la dist || true
+          echo "==== git status ===="
+          git status --porcelain
+
       - name: Commit result
         run: |
-          if git diff --quiet; then
-            echo "No changes"
+          # добавим всё что появилось в dist
+          git add -A dist || true
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add dist/inside-kvas.lst
           git commit -m "update inside-kvas.lst"
           git push
