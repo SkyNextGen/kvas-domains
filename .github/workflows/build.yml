@@ -20,7 +20,7 @@ jobs:
 
       - name: Run builder
         run: |
-          python src/build_v2fly.py
+          python src/build.py
 
       - name: Debug - list files
         run: |
