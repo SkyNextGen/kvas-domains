@@ -22,12 +22,12 @@ jobs:
           python-version: "3.11"
 
       - name: Run builder
-        run: python src/build.py
+        run: |
+          python src/build.py
 
       - name: Commit dist
         run: |
           git add -A dist
-
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
