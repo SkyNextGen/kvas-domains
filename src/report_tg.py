@@ -25,6 +25,10 @@ from report_common import (
 # ------------------------------------------------------
 
 def tg_header(sev: str) -> List[str]:
+    """
+    Header block for Telegram notification.
+    Uses 'СТАТУС СБОРКИ' instead of 'ПРИОРИТЕТ'.
+    """
 
     if sev == "ОК":
         src = "🟢 GitHub Actions"
@@ -94,17 +98,21 @@ def tg_problems_lines(state: Dict) -> List[str]:
 
 
 # ------------------------------------------------------
-# Trend icon selection
+# Trend visual: make it логично по delta (к прошлой)
 # ------------------------------------------------------
 
-def trend_icon(eval_line: str) -> str:
-    if "Стабильно" in eval_line:
-        return "➡️"
-    if "Рост" in eval_line:
-        return "📈"
-    if "Падение" in eval_line:
-        return "📉"
-    return "📊"
+def trend_visual(delta: int) -> Tuple[str, str]:
+    """
+    Trend label/icon based strictly on Δ to previous run:
+      delta > 0 -> Рост
+      delta < 0 -> Падение
+      delta == 0 -> Стабильно
+    """
+    if delta > 0:
+        return "📈", "Рост"
+    if delta < 0:
+        return "📉", "Падение"
+    return "➡️", "Стабильно"
 
 
 # ------------------------------------------------------
@@ -128,9 +136,11 @@ def format_tg(
     url = repo_report_url(str(state.get("repo", "")))
 
     avg7, delta, deviation, eval_line = trend_eval(stats, prev_rec, total)
-    problems = tg_problems_lines(state)
+    icon, label = trend_visual(delta)
 
+    problems = tg_problems_lines(state)
     hdr = tg_header(sev)
+
     badge = "🟢" if p < 85.0 else ("🟡" if p < 96.0 else "🔴")
 
     msg: List[str] = []
@@ -161,17 +171,17 @@ def format_tg(
 
     # Usage
     msg += [
-        f"📊 Использование лимита:",
+        "📊 Использование лимита:",
         f"{total} / {max_lines} ({p:.1f}%) {badge}",
         "",
     ]
 
-    # Trend
+    # Trend (логично по delta)
     msg += [
         "📈 ТРЕНД ЗА 7 ЗАПУСКОВ",
         f"Среднее: {avg7}",
         f"Δ к прошлой: {delta:+d}",
-        f"{trend_icon(eval_line)} {eval_line}",
+        f"{icon} {label}",
         "",
     ]
 
@@ -191,7 +201,8 @@ def format_tg(
 
     tg_message = "\n".join(msg).rstrip() + "\n"
 
-    tg_alert = ""  # отдельные alert отключены
+    # Alerts disabled (kept for compatibility)
+    tg_alert = ""
 
     return tg_message, tg_alert
 
