@@ -7,7 +7,7 @@ import json
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,7 +20,7 @@ TG_ALERT_OUT = DIST_DIR / "tg_alert.txt"
 STATS_JSON = DIST_DIR / "stats.json"
 
 
-# ------------------------- utils -------------------------
+# ------------------------- helpers -------------------------
 
 def load_json(path: Path, default):
     if not path.exists():
@@ -38,19 +38,11 @@ def short_hash(h: str) -> str:
     return f"{h[:4]}…{h[-4:]}"
 
 
-def now_msk_dt() -> datetime:
+def now_msk():
     return datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=3)))
 
 
-def format_date_msk(d: datetime) -> str:
-    return d.strftime("%d.%m.%Y")
-
-
-def format_time_msk(d: datetime) -> str:
-    return d.strftime("%H:%M:%S МСК")
-
-
-def format_build_time_msk(raw: str) -> str:
+def format_build_time(raw: str) -> str:
     s = (raw or "").replace("UTC", "").strip()
     try:
         dt_utc = datetime.strptime(s, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
@@ -64,10 +56,8 @@ def format_build_time_msk(raw: str) -> str:
 
 
 def usage_badge(pct: float) -> str:
-    if pct >= 96:
-        return "🔴"
-    if pct >= 85:
-        return "🟡"
+    if pct >= 96: return "🔴"
+    if pct >= 85: return "🟡"
     return "🟢"
 
 
@@ -76,9 +66,6 @@ def usage_badge(pct: float) -> str:
 def main():
 
     state = load_json(STATE_JSON, {})
-    if not isinstance(state, dict):
-        raise SystemExit("Bad state.json")
-
     prev = state.get("prev", {}) or {}
 
     repo = state.get("repo", "unknown/unknown")
@@ -126,27 +113,22 @@ def main():
     else:
         system_line = "🟢 Система стабильна"
 
-    build_time = format_build_time_msk(state.get("build_time_utc", ""))
+    build_time = format_build_time(state.get("build_time_utc", ""))
     sha = short_hash(state.get("sha256_final", ""))
 
     # ---------------- warnings block ----------------
 
-    active_warnings = 0
-    if failed_categories:
-        active_warnings += 1
-    if empty_categories:
-        active_warnings += 1
-    if near_limit:
-        active_warnings += 1
-    if bad_lines > 0:
-        active_warnings += 1
-    if truncated > 0:
-        active_warnings += 1
+    active = 0
+    if failed_categories: active += 1
+    if empty_categories: active += 1
+    if near_limit: active += 1
+    if bad_lines > 0: active += 1
+    if truncated > 0: active += 1
 
-    if active_warnings == 0:
-        warnings_header = "🟢 Проблем не обнаружено"
+    if active == 0:
+        warn_header = "🟢 Проблем не обнаружено"
     else:
-        warnings_header = "🔴 Обнаружены проблемы"
+        warn_header = "🔴 Обнаружены проблемы"
 
     failed_inline = "НЕТ" if not failed_categories else ", ".join(failed_categories)
     empty_inline = "НЕТ" if not empty_categories else ", ".join(empty_categories)
@@ -154,8 +136,8 @@ def main():
     warnings_block = f"""
 ## ⚠ Предупреждения
 
-{warnings_header}
-Всего активных предупреждений: {active_warnings}
+{warn_header}
+Всего активных предупреждений: {active}
 
 - Не удалось получить категории (скачивание/парсинг): {failed_inline}
 - Пустые категории (0 доменов): {empty_inline}
@@ -197,6 +179,12 @@ def main():
 ---
 
 {warnings_block}
+
+---
+
+## 📝 Примечания
+
+- `invalid_lines` = строки, отброшенные при парсинге из‑за некорректного формата (не домен/неподдерживаемая запись)
 
 ---
 
