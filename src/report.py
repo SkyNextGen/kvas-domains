@@ -489,112 +489,174 @@ def tg_problems_lines(state: Dict) -> List[str]:
     return lines
 
 
-def format_tg(state: Dict, stats: List[Dict], prev_rec: Optional[Dict]) -> Tuple[str, str]:
-    sev = classify_severity(state)
-    date_s, time_s = fmt_tg_date_time(str(state.get("build_time_utc", "")))
+def format_tg(state: dict, report_url: str) -> Tuple[str, str]:
+    """
+    Telegram message (approved unified standard):
+      - Always starts with a 3-line header + severity tag line.
+      - No file attachment; only a link to report.md.
+      - Returns: (tg_message_text, tg_alert_text_or_empty)
+    """
+    # --------- helpers ----------
+    def short_hash(h: str) -> str:
+        h = (h or "").strip()
+        if len(h) <= 10:
+            return h
+        return f"{h[:4]}…{h[-4:]}"
 
-    max_lines = int(state.get("max_lines", 3000))
-    total = int(state.get("final_total", 0))
-    p = pct(total, max_lines)
-    rest = max_lines - total
+    def ratio_color(used: int, limit_: int) -> str:
+        if limit_ <= 0:
+            return "🟢"
+        p = (used / limit_) * 100.0
+        if p >= 96.0:
+            return "🔴"
+        if p >= 85.0:
+            return "🟠"
+        return "🟢"
 
-    sha = short_hash(str(state.get("sha256_final", "")))
-    url = repo_report_url(str(state.get("repo", "")))
+    def level_label(run_ok_: bool, has_warn_: bool, has_crit_: bool) -> Tuple[str, str]:
+        # (color+source line, severity line)
+        if has_crit_ or not run_ok_:
+            return ("🔴 GitHub Actions", "🚨 CRITICAL")
+        if has_warn_:
+            return ("🟡 GitHub Actions", "⚠️ WARNING")
+        return ("🟢 GitHub Actions", "ℹ️ INFO")
 
-    avg7, delta, deviation, eval_line = trend_eval(stats, prev_rec, total)
-    problems = tg_problems_lines(state)
+    # --------- pick core fields ----------
+    dt_run = state.get("run_dt_msk") or now_msk_dt()
+    if isinstance(dt_run, str):
+        # tolerate old formats
+        try:
+            dt_run = datetime.fromisoformat(dt_run)
+        except Exception:
+            dt_run = now_msk_dt()
 
-    # tg_alert only for WARNING/ERROR
-    tg_alert = ""
-    if sev != "ОК" and problems:
-        tg_alert = "\n".join(problems).rstrip() + "\n"
+    d_s, t_s = fmt_tg_date_time(dt_run)
 
-    if sev == "ОШИБКА":
-        msg = [
-            "🚨 Сборка завершена с ошибками",
+    final_count = int((state.get("final") or {}).get("total", 0) or 0)
+    limit_ = int(state.get("limit", 3000) or 3000)
+    rest = max(0, limit_ - final_count)
+    pct = (final_count / limit_ * 100.0) if limit_ else 0.0
+
+    sha_final = (state.get("hashes") or {}).get("sha256_final", "")
+    sha_short = short_hash(sha_final)
+
+    # Trend (already computed by report.py earlier; keep tolerant defaults)
+    trend = state.get("trend", {}) if isinstance(state.get("trend", {}), dict) else {}
+    avg7 = int(trend.get("avg7", 0) or 0)
+    delta_prev = int(trend.get("delta_prev", 0) or 0)
+    trend_label = str(trend.get("label", "➡ Стабильно") or "➡ Стабильно").strip()
+
+    # Warnings / criticals aggregated by report.py
+    alerts = state.get("alerts", []) if isinstance(state.get("alerts", []), list) else []
+    critical_alert = state.get("critical_alert", "") or ""
+    run_ok = bool(state.get("run_ok", True))
+    has_warn = bool(alerts)
+    has_crit = bool(critical_alert) or (not run_ok)
+
+    source_line, sev_line = level_label(run_ok, has_warn, has_crit)
+
+    header = [
+        "📦 BUILD SYSTEM",
+        source_line,
+        "━━━━━━━━━━━━━━━━━━",
+        sev_line,
+        "",
+    ]
+
+    # --------- body ----------
+    lines: List[str] = []
+
+    if has_crit:
+        lines += [
+            "❌ Сборка завершена с ошибками",
             "🔴 Критический статус",
             "",
-            f"🗓 {date_s}",
-            f"🕒 {time_s}",
+            f"🗓 {d_s}",
+            f"🕒 {t_s} МСК",
+        ]
+        # For critical we often don't have stable numbers; include if present.
+        if final_count and limit_:
+            lines += [
+                "",
+                f"📊 {final_count} / {limit_} ({pct:.1f}%) {ratio_color(final_count, limit_)}",
+                f"🧮 Остаток: {rest} строк",
+            ]
+        if critical_alert:
+            lines += ["", f"⚠ Логи: {critical_alert}"]
+    elif has_warn:
+        # WARNING
+        lines += [
+            "✅ Сборка завершена",
+        ]
+        # Build a compact warning summary
+        # state may carry 'warn_summary' if you generate it; otherwise show counts.
+        warn_summary = state.get("warn_summary", "")
+        if warn_summary:
+            lines += [f"⚠️ Есть предупреждения: {warn_summary}"]
+        else:
+            lines += [f"⚠️ Есть предупреждения: {len(alerts)}"]
+        lines += [
             "",
-            "━━━━━━━━━━━━━━━━━━",
-            "📦 РЕЗУЛЬТАТ",
-            "━━━━━━━━━━━━━━━━━━",
-            f"📊 {total} / {max_lines} ({p}%) {limit_badge(p)}",
+            f"🗓 {d_s}",
+            f"🕒 {t_s} МСК",
+            "",
+            f"📊 {final_count} / {limit_} ({pct:.1f}%) {ratio_color(final_count, limit_)}",
             f"🧮 Остаток: {rest} строк",
             "",
-            "━━━━━━━━━━━━━━━━━━",
-            "📈 ТРЕНД",
-            "━━━━━━━━━━━━━━━━━━",
-            f"Среднее (7): {avg7}",
-            f"Δ к прошлой: {delta:+d}",
-            f"Отклонение: {deviation:+d}",
-            eval_line,
-            "",
-            "━━━━━━━━━━━━━━━━━━",
             "⚠ ПРОБЛЕМЫ",
-            "━━━━━━━━━━━━━━━━━━",
         ]
-        msg += (problems if problems else ["—"])
-        msg += ["", f"🔐 sha256: {sha}"]
-        if url:
-            msg += [f"🔗 Отчёт: {url}"]
-        return "\n".join(msg).rstrip() + "\n", tg_alert
-
-    if sev == "ПРЕДУПРЕЖДЕНИЕ":
-        msg = [
-            "⚠️ Сборка завершена с предупреждениями",
-            "🟡 Требует внимания",
+        # Show up to 8 issues
+        for a in alerts[:8]:
+            # expected format: {"sev":"warn"/"error","title":"...", "detail":"..."}
+            sev = str(a.get("sev", "warn")).lower()
+            title = str(a.get("title", "")).strip()
+            detail = str(a.get("detail", "")).strip()
+            if not title and detail:
+                title = detail
+                detail = ""
+            icon = "🟡"
+            if sev in ("error", "fail", "critical"):
+                icon = "🔴"
+            elif sev in ("near_limit", "orange", "warning"):
+                icon = "🟠"
+            if detail:
+                lines.append(f"{icon} {title} — {detail}")
+            else:
+                lines.append(f"{icon} {title}")
+    else:
+        # INFO / OK
+        lines += [
+            "🚀 Сборка завершена",
+            "🟢 Система стабильна",
             "",
-            f"🗓 {date_s}",
-            f"🕒 {time_s}",
+            f"🗓 {d_s}",
+            f"🕒 {t_s} МСК",
             "",
-            "━━━━━━━━━━━━━━━━━━",
-            "📦 РЕЗУЛЬТАТ",
-            "━━━━━━━━━━━━━━━━━━",
-            f"📊 {total} / {max_lines} ({p}%) {limit_badge(p)}",
+            f"📊 {final_count} / {limit_} ({pct:.1f}%) {ratio_color(final_count, limit_)}",
             f"🧮 Остаток: {rest} строк",
             "",
-            "━━━━━━━━━━━━━━━━━━",
             "📈 ТРЕНД",
-            "━━━━━━━━━━━━━━━━━━",
             f"Среднее (7): {avg7}",
-            f"Δ к прошлой: {delta:+d}",
-            f"Отклонение: {deviation:+d}",
-            eval_line,
+            f"Δ к прошлой: {delta_prev:+d}",
+            f"{trend_label}",
             "",
-            "━━━━━━━━━━━━━━━━━━",
-            "⚠ ПРОБЛЕМЫ",
-            "━━━━━━━━━━━━━━━━━━",
+            "✅ Замечаний нет",
         ]
-        msg += (problems if problems else ["—"])
-        msg += ["", f"🔐 sha256: {sha}"]
-        if url:
-            msg += [f"🔗 Отчёт: {url}"]
-        return "\n".join(msg).rstrip() + "\n", tg_alert
 
-    # OK (approved compact)
-    msg = [
-        "🚀 Сборка завершена",
-        "🟢 Система стабильна",
-        "",
-        f"🗓 {date_s}",
-        f"🕒 {time_s}",
-        "",
-        f"📊 {total} / {max_lines} ({p}%) {limit_badge(p)}",
-        "",
-        "📈 ТРЕНД",
-        f"Среднее (7): {avg7}",
-        f"Δ к прошлой: {delta:+d}",
-        eval_line,
-        "",
-        "✅ Замечаний нет" if not problems else "⚠️ Есть замечания",
-        "",
-        f"🔐 sha256: {sha}",
-    ]
-    if url:
-        msg.append(f"🔗 Отчёт: {url}")
-    return "\n".join(msg).rstrip() + "\n", ""
+    # footer: hash + report link (always)
+    if sha_short:
+        lines += ["", f"🔐 sha256: {sha_short}"]
+    if report_url:
+        lines += [f"🔗 Отчёт: {report_url}"]
+
+    tg_text = "\n".join(header + lines).rstrip() + "\n"
+
+    # Separate alert message: only when warnings/critical
+    tg_alert = ""
+    if has_crit or has_warn:
+        tg_alert = tg_text
+
+    return tg_text, tg_alert
 
 
 def main() -> int:
