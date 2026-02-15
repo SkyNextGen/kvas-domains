@@ -1,455 +1,675 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""
+KVAS report + Telegram generator (visual redesign).
+
+Inputs:
+- dist/state.json   (produced by src/build.py)
+- dist/stats.json   (run history, appended here)
+
+Outputs:
+- dist/report.md    (regenerated every run)
+- dist/tg_message.txt
+- dist/tg_alert.txt (only if WARNING/ERROR; removed when OK)
+
+Notes:
+- Uses GitHub Markdown typography: # / ## / ### plus quotes and <details>.
+- Telegram follows approved templates (OK / WARNING / ERROR) + report link.
+"""
 
 from __future__ import annotations
 
 import json
-import os
-import sys
-from dataclasses import dataclass
-from datetime import datetime, timezone, timedelta, timedelta
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
-DIST = Path("dist")
-STATE_PATH = DIST / "state.json"
-STATS_PATH = DIST / "stats.json"
-REPORT_MD_PATH = DIST / "report.md"
-TG_MESSAGE_PATH = DIST / "tg_message.txt"
-TG_ALERT_PATH = DIST / "tg_alert.txt"
-TG_FAILURE_PATH = DIST / "tg_failure.txt"
+ROOT = Path(__file__).resolve().parents[1]
+DIST = ROOT / "dist"
 
-MONTHS_RU = [
-    "янв", "фев", "мар", "апр", "май", "июн",
-    "июл", "авг", "сен", "окт", "ноя", "дек",
-]
+STATE_JSON = DIST / "state.json"
+STATS_JSON = DIST / "stats.json"
+REPORT_MD = DIST / "report.md"
+TG_MESSAGE = DIST / "tg_message.txt"
+TG_ALERT = DIST / "tg_alert.txt"
+
+MSK = timezone(timedelta(hours=3))
+MONTHS_RU = ["янв","фев","мар","апр","мая","июн","июл","авг","сен","окт","ноя","дек"]
+
+def tg_header(sev: str) -> List[str]:
+    # Unified header for all Telegram notifications from GitHub Actions build system
+    if sev == "ОК":
+        src = "🟢 GitHub Actions"
+        tag = "ℹ️ INFO"
+        pr = "🟢 ПРИОРИТЕТ: НИЗКИЙ"
+    elif sev == "ПРЕДУПРЕЖДЕНИЕ":
+        src = "🟡 GitHub Actions"
+        tag = "⚠️ WARNING"
+        pr = "🟡 ПРИОРИТЕТ: СРЕДНИЙ"
+    else:
+        src = "🔴 GitHub Actions"
+        tag = "🚨 CRITICAL"
+        pr = "🔴 ПРИОРИТЕТ: ВЫСОКИЙ"
+    return [
+        "📦 BUILD SYSTEM",
+        src,
+        "━━━━━━━━━━━━━━━━━━",
+        tag,
+        "",
+        pr,
+        "",
+    ]
 
 
-def _load_json(path: Path, default: Any) -> Any:
+
+
+# ---------------- helpers ----------------
+
+def load_json(path: Path, default):
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        if not path.exists():
+            return default
+        obj = json.loads(path.read_text(encoding="utf-8"))
+        return obj
     except Exception:
         return default
 
 
-def _write_text(path: Path, text: str) -> None:
+def dump_json(path: Path, obj) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text.rstrip() + "\n", encoding="utf-8")
+    path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def _short_sha(full_sha: str) -> str:
-    if not full_sha:
-        return "—"
-    s = full_sha.strip()
-    if len(s) <= 10:
-        return s
-    return f"{s[:4]}…{s[-4:]}"
+def parse_dt_utc(s: str) -> datetime:
+    """
+    Accepts:
+      - '2026-02-15 13:06:41 UTC'
+      - ISO with Z / +00:00
+      - ISO without tz (treated as UTC)
+    """
+    raw = (s or "").strip()
+    if not raw:
+        return datetime.now(timezone.utc)
 
-
-def _msk_dt_from_state(state: Dict[str, Any]) -> datetime:
-    # Preferred: explicit ISO string in state
-    iso = state.get("run_time_msk") or state.get("build_time_msk")
-    if isinstance(iso, str) and iso:
-        # Accept "YYYY-MM-DD HH:MM:SS" or ISO 8601
+    # 'YYYY-MM-DD HH:MM:SS UTC'
+    if raw.endswith(" UTC"):
+        core = raw[:-4].strip()
         try:
-            if "T" in iso:
-                return datetime.fromisoformat(iso)
-            return datetime.strptime(iso, "%Y-%m-%d %H:%M:%S")
-        except Exception:
-            pass
-
-    # Fallback: UTC iso from build step
-    utc_iso = state.get("build_time_utc")
-    if isinstance(utc_iso, str) and utc_iso:
-        try:
-            dt = datetime.fromisoformat(utc_iso.replace('Z', '+00:00'))
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
+            dt = datetime.strptime(core, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
             return dt
         except Exception:
             pass
 
-    # Fallback: epoch seconds
-    ts = state.get("run_ts") or state.get("timestamp")
+    # ISO-ish
     try:
-        ts = int(ts)
-        return datetime.fromtimestamp(ts, tz=timezone.utc)
+        if raw.endswith("Z"):
+            return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(timezone.utc)
+        dt = datetime.fromisoformat(raw)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
     except Exception:
-        # Last resort: now (UTC)
-        return datetime.now(tz=timezone.utc)
+        return datetime.now(timezone.utc)
 
 
-def _fmt_date_time_msk(dt: datetime) -> Tuple[str, str]:
-    """Return (DD.MM.YYYY, HH:MM:SS) in MSK (UTC+3)."""
-    msk = timezone(timedelta(hours=3))
-    if dt.tzinfo is None:
-        d = dt.replace(tzinfo=msk)
+def fmt_build_time_msk(build_time_utc: str) -> str:
+    dt_msk = parse_dt_utc(build_time_utc).astimezone(MSK)
+    m = MONTHS_RU[dt_msk.month - 1]
+    return f"{dt_msk.day:02d} {m} {dt_msk.year}, {dt_msk:%H:%M} МСК"
+
+
+def fmt_tg_date_time(build_time_utc: str) -> Tuple[str, str]:
+    dt_msk = parse_dt_utc(build_time_utc).astimezone(MSK)
+    return dt_msk.strftime("%d.%m.%Y"), dt_msk.strftime("%H:%M:%S МСК")
+
+
+def pct(n: int, d: int) -> float:
+    if d <= 0:
+        return 0.0
+    return round(n / d * 100.0, 1)
+
+
+def limit_badge(p: float) -> str:
+    if p >= 96.0:
+        return "🔴"
+    if p >= 85.0:
+        return "🟡"
+    return "🟢"
+
+
+def diff_lists(prev: List[str], curr: List[str]) -> Tuple[List[str], List[str]]:
+    p = set(prev or [])
+    c = set(curr or [])
+    return sorted(c - p), sorted(p - c)
+
+
+def short_hash(h: str) -> str:
+    h = (h or "").strip()
+    if len(h) < 10:
+        return h or "—"
+    return f"{h[:4]}…{h[-4:]}"
+
+
+def status_emoji(status: str) -> str:
+    s = (status or "").upper()
+    if s == "OK":
+        return "🟢 OK"
+    if s == "EMPTY":
+        return "🟡 ПУСТО"
+    if s == "FAIL":
+        return "🔴 ОШИБКА"
+    return "—"
+
+
+def classify_severity(state: Dict) -> str:
+    """
+    Returns: 'ОК' / 'ПРЕДУПРЕЖДЕНИЕ' / 'ОШИБКА'
+    """
+    max_lines = int(state.get("max_lines", 3000))
+    threshold = int(state.get("near_limit_threshold", 2900))
+    total = int(state.get("final_total", 0))
+    p = pct(total, max_lines)
+
+    v2_fail = int(state.get("v2fly_fail", 0))
+    bad = int(state.get("bad_output_lines", 0))
+    trunc = int(state.get("truncated", 0))
+    failed = state.get("failed_categories") or []
+    empty = state.get("empty_categories") or []
+    warns = state.get("warnings") or []
+
+    if v2_fail > 0 or bad > 0 or trunc > 0 or p >= 96.0 or len(failed) > 0:
+        return "ОШИБКА"
+    if len(empty) > 0 or len(warns) > 0 or total >= threshold or p >= 85.0:
+        return "ПРЕДУПРЕЖДЕНИЕ"
+    return "ОК"
+
+
+def append_stats(state: Dict) -> Tuple[List[Dict], Optional[Dict]]:
+    stats = load_json(STATS_JSON, [])
+    if not isinstance(stats, list):
+        stats = []
+    prev = stats[-1] if stats and isinstance(stats[-1], dict) else None
+
+    rec = {
+        "ts_utc": state.get("build_time_utc"),
+        "total": int(state.get("final_total", 0)),
+        "severity": classify_severity(state),
+    }
+    stats.append(rec)
+    stats = stats[-400:]
+    dump_json(STATS_JSON, stats)
+    return stats, prev
+
+
+def trend_eval(stats: List[Dict], prev_rec: Optional[Dict], curr_total: int) -> Tuple[int, int, int, str]:
+    totals = [int(x.get("total", 0)) for x in stats[-7:] if isinstance(x, dict)]
+    avg7 = int(round(sum(totals) / len(totals))) if totals else curr_total
+
+    prev_total = int(prev_rec.get("total", 0)) if isinstance(prev_rec, dict) else None
+    delta = (curr_total - prev_total) if prev_total is not None else 0
+    deviation = curr_total - avg7
+
+    if avg7 > 0 and curr_total >= avg7 * 2:
+        eval_line = "📈 Рост (выше среднего ×2)"
     else:
-        d = dt.astimezone(msk)
-    return (d.strftime('%d.%m.%Y'), d.strftime('%H:%M:%S'))
-
-
-def _github_report_url(repo: str) -> str:
-    # repo like "SkyNextGen/kvas-domains"
-    if not repo:
-        repo = os.getenv("GITHUB_REPOSITORY", "")
-    if not repo:
-        return ""
-    return f"https://github.com/{repo}/blob/main/dist/report.md"
-
-
-def _github_actions_run_url(repo: str) -> str:
-    run_id = os.getenv("GITHUB_RUN_ID", "")
-    if not repo:
-        repo = os.getenv("GITHUB_REPOSITORY", "")
-    if not repo or not run_id:
-        return ""
-    return f"https://github.com/{repo}/actions/runs/{run_id}"
-
-
-@dataclass
-class Trend:
-    avg7: int
-    delta_prev: int
-    label: str
-
-
-def _compute_trend(stats: List[Dict[str, Any]], current_total: int) -> Trend:
-    # stats is a list of dicts with key total (final list size)
-    totals = [int(x.get("total") or x.get("total_final") or x.get("final_total") or 0) for x in stats if isinstance(x, dict)]
-    prev = totals[-2] if len(totals) >= 2 else current_total
-    last7 = totals[-7:] if totals else [current_total]
-    avg7 = int(round(sum(last7) / max(1, len(last7))))
-    delta = int(current_total) - int(prev)
-
-    # Simple stability heuristic
-    if abs(delta) <= max(3, int(0.002 * max(1, current_total))):
-        label = "➡ Стабильно"
-    elif delta > 0:
-        label = "⬆ Рост"
-    else:
-        label = "⬇ Снижение"
-
-    return Trend(avg7=avg7, delta_prev=delta, label=label)
-
-
-@dataclass
-class LimitInfo:
-    used: int
-    limit: int
-    pct: float
-    color: str  # emoji
-    remain: int
-    near_limit: bool
-
-
-def _limit_info(used: int, limit: int, near_threshold: int = 2900) -> LimitInfo:
-    limit = int(limit) if limit else 0
-    used = int(used) if used else 0
-    pct = (used / limit * 100.0) if limit else 0.0
-    remain = max(0, limit - used) if limit else 0
-
-    # Color per earlier rule
-    if limit and used / limit < 0.85:
-        color = "🟢"
-    elif limit and used / limit < 0.96:
-        color = "🟡"
-    else:
-        # near critical
-        color = "🟠" if limit and used / limit < 0.99 else "🔴"
-
-    near_limit = bool(limit and used >= near_threshold)
-    return LimitInfo(used=used, limit=limit, pct=pct, color=color, remain=remain, near_limit=near_limit)
-
-
-@dataclass
-class Health:
-    level: str  # INFO/WARNING/CRITICAL
-    header_color: str  # 🟢 🟡 🔴
-    build_title: str
-    build_subtitle: str
-    problems: List[str]
-
-
-def _health_from_state(state: Dict[str, Any], lim: LimitInfo) -> Health:
-    errors: List[str] = []
-    warnings: List[str] = []
-
-    # Structured signals
-    for x in state.get("errors", []) or []:
-        if isinstance(x, str) and x.strip():
-            errors.append(x.strip())
-    for x in state.get("warnings", []) or []:
-        if isinstance(x, str) and x.strip():
-            warnings.append(x.strip())
-
-    # v2fly category status
-    v2_fail = state.get("v2fly_fail", {}) or {}
-    v2_empty = state.get("v2fly_empty", {}) or {}
-    if isinstance(v2_fail, dict):
-        for k, v in v2_fail.items():
-            errors.append(f"{k} — {v}")
-    if isinstance(v2_empty, dict):
-        for k in v2_empty.keys():
-            warnings.append(f"{k} — пусто")
-
-    # Near limit is a warning
-    if lim.near_limit or (lim.limit and lim.used / lim.limit >= 0.96):
-        warnings.append("Почти лимит")
-
-    if errors:
-        return Health(
-            level="CRITICAL",
-            header_color="🔴",
-            build_title="❌ Сборка завершена с ошибками",
-            build_subtitle="🔴 Критический статус",
-            problems=errors[:10],
-        )
-
-    if warnings:
-        # compress common warning lines into readable text
-        return Health(
-            level="WARNING",
-            header_color="🟡",
-            build_title="✅ Сборка завершена",
-            build_subtitle=f"⚠️ Есть предупреждения: {len(warnings)}",
-            problems=warnings[:10],
-        )
-
-    return Health(
-        level="INFO",
-        header_color="🟢",
-        build_title="🚀 Сборка завершена",
-        build_subtitle="🟢 Система стабильна",
-        problems=[],
-    )
-
-
-def _tg_header(source_name: str, level: str) -> Tuple[str, str, str]:
-    # Returns (line1, line2, label)
-    # Source_name example: "GitHub Actions"
-    if level == "CRITICAL":
-        return ("📦 BUILD SYSTEM", f"🔴 {source_name}", "🚨 CRITICAL")
-    if level == "WARNING":
-        return ("📦 BUILD SYSTEM", f"🟡 {source_name}", "⚠️ WARNING")
-    return ("📦 BUILD SYSTEM", f"🟢 {source_name}", "ℹ️ INFO")
-
-
-def format_tg(state: Dict[str, Any], stats: List[Dict[str, Any]], repo: str) -> Tuple[str, Optional[str], Optional[str]]:
-    # returns (main_msg, alert_msg, failure_msg)
-    total_final = int((state.get("total_final") or state.get("final_total") or 0) or 0)
-    limit = int(state.get("limit", 3000) or 3000)
-    sha = _short_sha(str(state.get("sha256_final", "") or ""))
-
-    lim = _limit_info(total_final, limit, near_threshold=int(state.get("near_threshold", 2900) or 2900))
-    trend = _compute_trend(stats, total_final)
-    health = _health_from_state(state, lim)
-
-    dt = _msk_dt_from_state(state)
-    date_s, time_s = _fmt_date_time_msk(dt)
-
-    report_url = _github_report_url(repo)
-    run_url = _github_actions_run_url(repo)
-
-    h1, h2, lvl = _tg_header("GitHub Actions", health.level)
-
-    lines: List[str] = []
-    lines.append(h1)
-    lines.append(h2)
-    lines.append("━━━━━━━━━━━━━━━━━━")
-    lines.append(lvl)
-    lines.append("")
-    lines.append(health.build_title)
-    lines.append(health.build_subtitle)
-    lines.append("")
-    lines.append(f"🗓 {date_s}")
-    lines.append(f"🕒 {time_s} МСК")
-    lines.append("")
-    if lim.limit:
-        lines.append(f"📊 {lim.used} / {lim.limit} ({lim.pct:.1f}%) {lim.color}")
-        lines.append(f"🧮 Остаток: {lim.remain} строк")
-        lines.append("")
-
-    # Trend always shown for INFO/WARNING
-    if health.level in ("INFO", "WARNING"):
-        lines.append("📈 ТРЕНД")
-        lines.append(f"Среднее (7): {trend.avg7}")
-        sign = "+" if trend.delta_prev >= 0 else ""
-        lines.append(f"Δ к прошлой: {sign}{trend.delta_prev}")
-        lines.append(trend.label)
-        lines.append("")
-
-    # Problems shown only for WARNING
-    if health.level == "WARNING":
-        lines.append("⚠ ПРОБЛЕМЫ")
-        for p in health.problems:
-            if p == "Почти лимит":
-                lines.append("🟠 Почти лимит")
-            elif "пусто" in p:
-                lines.append(f"🟡 {p}")
-            else:
-                lines.append(f"🔴 {p}")
-        lines.append("")
-
-    if health.level == "INFO":
-        lines.append("✅ Замечаний нет")
-        lines.append("")
-
-    lines.append(f"🔐 sha256: {sha}")
-
-    if report_url:
-        lines.append(f"🔗 Отчёт: {report_url}")
-
-    # CRITICAL includes link to actions run
-    if health.level == "CRITICAL":
-        lines.append("")
-        if run_url:
-            lines.append(f"⚠ Логи: GitHub Actions (run)\n{run_url}")
+        tol = max(10, int(round(avg7 * 0.01)))
+        if abs(deviation) <= tol:
+            eval_line = "➡ Стабильно"
+        elif deviation > 0:
+            eval_line = "📈 Рост"
         else:
-            lines.append("⚠ Логи: GitHub Actions (run)")
+            eval_line = "📉 Падение"
 
-    main = "\n".join(lines).strip()
-
-    alert_msg = None
-    failure_msg = None
-    if health.level == "WARNING":
-        alert_msg = main
-    if health.level == "CRITICAL":
-        failure_msg = main
-
-    return main, alert_msg, failure_msg
+    return avg7, delta, deviation, eval_line
 
 
-def _format_report_md(state: Dict[str, Any], stats: List[Dict[str, Any]]) -> str:
-    # Keep it simple: the repo already has a redesigned markdown; here only ensure it's regenerated.
-    repo = state.get("repo") or os.getenv("GITHUB_REPOSITORY", "")
-    dt = _msk_dt_from_state(state)
-    d, t = _fmt_date_time_msk(dt)
+def repo_report_url(repo: str) -> str:
+    r = (repo or "").strip()
+    if not r or "/" not in r:
+        return ""
+    return f"https://github.com/{r}/blob/main/dist/report.md"
 
-    total_final = int((state.get("total_final") or state.get("final_total") or 0) or 0)
-    limit = int(state.get("limit", 3000) or 3000)
-    lim = _limit_info(total_final, limit, near_threshold=int(state.get("near_threshold", 2900) or 2900))
-    trend = _compute_trend(stats, total_final)
 
-    sha = str(state.get("sha256_final", "") or "")
-    sha_s = _short_sha(sha)
+# ---------------- report.md (redesign) ----------------
 
-    # Source summaries
-    itdog_total = int(state.get("itdog_total", 0) or 0)
-    v2_extras_total = int(state.get("v2fly_extras_total", 0) or 0)
-    v2_ok = int(state.get("v2fly_ok_count", 0) or 0)
-    v2_fail = int(state.get("v2fly_fail_count", 0) or 0)
-    v2_empty = int(state.get("v2fly_empty_count", 0) or 0)
+def format_report_md(state: Dict, stats: List[Dict], prev_rec: Optional[Dict]) -> str:
+    build_time = fmt_build_time_msk(str(state.get("build_time_utc", "")))
+    repo = str(state.get("repo", "unknown/unknown"))
+    output = str(state.get("output", "dist/inside-kvas.lst"))
 
-    # Status names in Russian
-    status_ok = "ОК"
-    status_fail = "ОШИБКА"
+    max_lines = int(state.get("max_lines", 3000))
+    threshold = int(state.get("near_limit_threshold", 2900))
 
-    v2_fail_map = state.get("v2fly_fail", {}) or {}
-    v2_empty_map = state.get("v2fly_empty", {}) or {}
+    itdog_total = int(state.get("itdog_total", 0))
+    v2_total = int(state.get("v2fly_total", 0))
+    final_total = int(state.get("final_total", 0))
 
-    warn_lines: List[str] = []
-    if v2_fail_map:
-        for k, v in v2_fail_map.items():
-            warn_lines.append(f"- 🔴 **{k}** — {v}")
-    if v2_empty_map:
-        for k in v2_empty_map.keys():
-            warn_lines.append(f"- 🟡 **{k}** — пусто")
+    trunc = int(state.get("truncated", 0))
+    bad = int(state.get("bad_output_lines", 0))
 
-    md: List[str] = []
-    md.append("# 📊 Отчёт сборки доменов KVAS")
-    md.append("")
-    md.append(f"**Сборка:** {d}, {t} МСК  ")
-    md.append(f"**Репозиторий:** `{repo}`  ")
-    md.append(f"**Выходной файл:** `dist/inside-kvas.lst`  ")
-    md.append(f"**Лимит строк:** `{limit}`")
-    md.append("")
+    v2_ok = int(state.get("v2fly_ok", 0))
+    v2_fail = int(state.get("v2fly_fail", 0))
+    cats = state.get("v2fly_categories") or []
+    empty_cats = state.get("empty_categories") or []
+    failed_cats = state.get("failed_categories") or []
+    warns = state.get("warnings") or []
 
-    md.append("## 🚦 Статус")
-    if v2_fail:
-        md.append(f"- ❌ {status_fail}: {v2_fail} катег.")
+    # diffs (top 20 shown in <details>)
+    prev = state.get("prev") if isinstance(state.get("prev"), dict) else {}
+    it_added, it_removed = diff_lists(prev.get("itdog_domains", []), state.get("itdog_domains", []))
+    v2_added, v2_removed = diff_lists(prev.get("v2fly_extras", []), state.get("v2fly_extras", []))
+    f_added, f_removed = diff_lists(prev.get("final_domains", []), state.get("final_domains", []))
+
+    p = pct(final_total, max_lines)
+    badge = limit_badge(p)
+    near = final_total >= threshold or p >= 96.0
+
+    sha = short_hash(str(state.get("sha256_final", "")))
+    url = repo_report_url(repo)
+
+    # Severity / warnings
+    sev = classify_severity(state)
+    if sev == "ОШИБКА":
+        status_lines = ["### 🚨 Сборка завершена с ошибками"]
+    elif sev == "ПРЕДУПРЕЖДЕНИЕ":
+        status_lines = ["### ⚠️ Сборка завершена с предупреждениями"]
     else:
-        md.append(f"- ✅ {status_ok}")
-    if v2_empty:
-        md.append(f"- 🟡 Пустых категорий: {v2_empty}")
-    md.append("")
+        status_lines = ["### ✅ Сборка завершена"]
 
-    md.append("## 📌 Сводка")
-    md.append(f"- itdog: **{itdog_total}**")
-    md.append(f"- v2fly extras: **{v2_extras_total}** (🟢 ok={v2_ok} / 🔴 {status_fail}={v2_fail} / 🟡 пусто={v2_empty})")
-    md.append(f"- итоговый список: **{total_final}**")
-    md.append("")
+    if failed_cats or empty_cats or warns or trunc or bad or near:
+        # keep the high-level line consistent
+        if sev == "ОК":
+            status_lines.append("### 🟡 Требует внимания")
+        elif sev == "ПРЕДУПРЕЖДЕНИЕ":
+            status_lines.append("### 🟡 Требует внимания")
+        else:
+            status_lines.append("### 🔴 Критический статус")
+    else:
+        status_lines.append("### 🟢 Предупреждений нет")
 
-    md.append("## 📈 Лимит")
-    md.append(f"- использование: **{lim.used} / {lim.limit} ({lim.pct:.1f}%)** {lim.color}")
-    md.append(f"- остаток: **{lim.remain}** строк")
-    md.append("")
+    # v2fly categories table
+    per_cat = state.get("v2fly_per_category") if isinstance(state.get("v2fly_per_category"), dict) else {}
+    table_rows = []
+    for c in cats:
+        meta = per_cat.get(c, {}) if isinstance(per_cat.get(c, {}), dict) else {}
+        table_rows.append(
+            f"| {c} | {int(meta.get('valid_domains',0))} | {int(meta.get('extras_added',0))} | "
+            f"{int(meta.get('invalid_lines',0))} | {int(meta.get('skipped_directives',0))} | {status_emoji(str(meta.get('status','')))} |"
+        )
+    if not table_rows:
+        table_rows.append("| — | 0 | 0 | 0 | 0 | — |")
 
-    md.append("## 📉 Тренд")
-    md.append(f"- среднее (7): **{trend.avg7}**")
-    sign = "+" if trend.delta_prev >= 0 else ""
-    md.append(f"- Δ к прошлой: **{sign}{trend.delta_prev}**")
-    md.append(f"- {trend.label}")
-    md.append("")
+    # Diagnostics
+    reserve = max_lines - final_total
+    risk = "низкий 🟢" if p < 85.0 else ("средний 🟡" if p < 96.0 else "высокий 🔴")
+    avg7, delta, deviation, eval_line = trend_eval(stats, prev_rec, final_total)
 
-    if warn_lines:
-        md.append("## ⚠️ Предупреждения")
-        md.extend(warn_lines)
-        md.append("")
+    # Problems list (for report)
+    problems: List[str] = []
+    if failed_cats:
+        problems.append("🔴 Категории не скачались/не распарсились: " + ", ".join(failed_cats))
+    if empty_cats:
+        problems.append("🟡 Пустые категории (0 доменов): " + ", ".join(empty_cats))
+    if near:
+        problems.append("🟠 Почти лимит")
+    if trunc > 0:
+        problems.append(f"🔴 Обрезка по лимиту: {trunc} строк")
+    if bad > 0:
+        problems.append(f"🔴 Некорректные строки в выводе: {bad}")
 
-    md.append("## 🔐 Контроль")
-    md.append(f"- sha256(final): `{sha_s}`")
+    # Build the markdown (3 typography levels)
+    L: List[str] = []
+    L.append("# 📊 Отчёт сборки доменов KVAS")
+    L.append("")
+    L.append("## 🧭 Общая информация")
+    L.append("")
+    L.append(f"> 🕒 **Сборка:** {build_time}  ")
+    L.append(f"> 📦 **Репозиторий:** {repo}  ")
+    L.append(f"> 📄 **Выходной файл:** `{output}`  ")
+    L.append(f"> 📏 Лимит строк: **{max_lines}**")
+    if url:
+        L.append(f"> 🔗 Отчёт: {url}")
+    L.append("")
+    L.append("---")
+    L.append("")
+    L.append("## 🧮 Итог сборки")
+    L.append("")
+    L.append(f"> ### 📊 {final_total} / {max_lines} ({p}%) {badge}")
+    L.append(f"> **Запас:** {reserve} строк  ")
+    L.append(f"> **Обрезка:** {'ДА' if trunc else 'НЕТ'}  ")
+    L.append(f"> **Некорректных строк:** {bad}")
+    L.append("")
+    L.append("---")
+    L.append("")
+    L.append("## 🚦 Статус")
+    L.append("")
+    L.extend(status_lines)
+    L.append("")
+    if problems:
+        L.append("### ⚠️ Замечания")
+        for x in problems:
+            L.append(f"- {x}")
+        L.append("")
+    else:
+        L.append("### ✅ Замечаний нет")
+        L.append("")
 
-    return "\n".join(md).rstrip() + "\n"
+    L.append("---")
+    L.append("")
+    L.append("## 📌 Сводка источников")
+    L.append("")
+    L.append("### 🗂 itdog")
+    L.append("")
+    L.append(f"- Всего доменов: **{itdog_total}**")
+    L.append(f"- Изменение: **+{len(it_added)} / -{len(it_removed)}**")
+    L.append("")
+    L.append("### 🌐 v2fly (extras)")
+    L.append("")
+    L.append(f"- Всего extras: **{v2_total}**")
+    L.append(f"- Изменение: **+{len(v2_added)} / -{len(v2_removed)}**")
+    L.append(f"- Категорий: **{len(cats)}**")
+    L.append("")
+    L.append(f"🟢 OK: {v2_ok}  ")
+    L.append(f"🔴 ОШИБКА: {v2_fail}  ")
+    L.append(f"🟡 ПУСТО: {len(empty_cats)}")
+    L.append("")
+    L.append("### 📦 Итоговый список")
+    L.append("")
+    L.append(f"- Всего: **{final_total}**")
+    L.append(f"- Изменение: **+{len(f_added)} / -{len(f_removed)}**")
+    L.append(f"- Обрезано: **{trunc}**")
+    L.append("")
+    L.append("---")
+    L.append("")
+    L.append("## 📈 Использование лимита")
+    L.append("")
+    L.append(f"### 📊 {final_total} / {max_lines} ({p}%) {badge}")
+    L.append("")
+    L.append("🟢 до 85% — нормально  ")
+    L.append("🟡 85–96% — внимание  ")
+    L.append("🔴 ≥ 96% — критично")
+    L.append("")
+    L.append(f"Близко к лимиту: **{'ДА' if near else 'НЕТ'}** (порог {threshold})")
+    L.append("")
+    L.append("---")
+    L.append("")
+    L.append("## 📂 v2fly — категории")
+    L.append("")
+    L.append("| Категория | Валидных | Добавлено | Некорректных | Пропущено | Статус |")
+    L.append("|---|---:|---:|---:|---:|---|")
+    L.extend(table_rows)
+    L.append("")
+    L.append("---")
+    L.append("")
+    L.append("## 🔐 Хеш")
+    L.append("")
+    L.append(f"> sha256(final): **{sha}**")
+    L.append("")
+    L.append("---")
+    L.append("")
+    L.append("<details>")
+    L.append("<summary>🔄 Изменения (топ 20)</summary>")
+    L.append("")
+    L.append("### itdog")
+    L.append("**➕ Добавлено**")
+    L.extend([f"- {x}" for x in it_added[:20]] or ["- —"])
+    L.append("")
+    L.append("**➖ Удалено**")
+    L.extend([f"- {x}" for x in it_removed[:20]] or ["- —"])
+    L.append("")
+    L.append("---")
+    L.append("")
+    L.append("### v2fly extras")
+    L.append("**➕ Добавлено**")
+    L.extend([f"- {x}" for x in v2_added[:20]] or ["- —"])
+    L.append("")
+    L.append("**➖ Удалено**")
+    L.extend([f"- {x}" for x in v2_removed[:20]] or ["- —"])
+    L.append("")
+    L.append("---")
+    L.append("")
+    L.append("### итоговый список")
+    L.append("**➕ Добавлено**")
+    L.extend([f"- {x}" for x in f_added[:20]] or ["- —"])
+    L.append("")
+    L.append("**➖ Удалено**")
+    L.extend([f"- {x}" for x in f_removed[:20]] or ["- —"])
+    L.append("")
+    L.append("</details>")
+    L.append("")
+    L.append("<details>")
+    L.append("<summary>🧪 Диагностика</summary>")
+    L.append("")
+    L.append(f"- источник itdog: **{itdog_total}** домена (уник.)")
+    L.append(f"- v2fly extras: **{v2_total}** доменов (после вычитания пересечений)")
+    L.append(f"- итог до лимита: **{final_total}** строк")
+    L.append(f"- запас до лимита: **{reserve}** строк")
+    L.append(f"- риск переполнения лимита: **{risk}**")
+    L.append("")
+    L.append("### 📈 Тренд")
+    L.append(f"- Среднее (7): **{avg7}**")
+    L.append(f"- Δ к прошлой: **{delta:+d}**")
+    L.append(f"- Отклонение: **{deviation:+d}**")
+    L.append(f"- {eval_line}")
+    L.append("")
+    L.append("### 🧠 v2fly здоровье")
+    L.append(f"- fail={max(len(failed_cats), v2_fail)} 🔴")
+    L.append(f"- empty={len(empty_cats)} 🟡")
+    if failed_cats or empty_cats:
+        L.append("")
+        recs = []
+        if failed_cats:
+            recs.append("проверить: " + ", ".join([x.split("(", 1)[0].strip() for x in failed_cats]))
+        if empty_cats:
+            recs.append("проверить: " + ", ".join(empty_cats))
+        L.append("### ✅ Рекомендации")
+        for r in recs:
+            L.append(f"- {r}")
+    else:
+        L.append("")
+        L.append("### ✅ Рекомендации")
+        L.append("- отсутствуют")
+    L.append("")
+    L.append("</details>")
+    L.append("")
+    return "\n".join(L).rstrip() + "\n"
+
+
+# ---------------- Telegram ----------------
+
+def tg_problems_lines(state: Dict) -> List[str]:
+    lines: List[str] = []
+    failed = state.get("failed_categories") or []
+    empty = state.get("empty_categories") or []
+
+    for f in failed:
+        name = str(f)
+        if "HTTP" in name:
+            # "tiktok (HTTP 404)" -> "🔴 tiktok — 404"
+            cat = name.split("(", 1)[0].strip()
+            tail = name.split("HTTP", 1)[1].strip().strip("()")
+            code = tail.split()[0]
+            lines.append(f"🔴 {cat} — {code}")
+        else:
+            cat = name.split("(", 1)[0].strip()
+            lines.append(f"🔴 {cat} — ошибка")
+
+    for e in empty:
+        lines.append(f"🟡 {e} — пусто")
+
+    max_lines = int(state.get("max_lines", 3000))
+    threshold = int(state.get("near_limit_threshold", 2900))
+    total = int(state.get("final_total", 0))
+    p = pct(total, max_lines)
+    if total >= threshold or p >= 96.0:
+        lines.append("🟠 Почти лимит")
+
+    trunc = int(state.get("truncated", 0))
+    if trunc > 0:
+        lines.append(f"🔴 Обрезка — {trunc}")
+
+    bad = int(state.get("bad_output_lines", 0))
+    if bad > 0:
+        lines.append(f"🔴 Некорректные строки — {bad}")
+
+    return lines
+
+
+def format_tg(state: Dict, stats: List[Dict], prev_rec: Optional[Dict]) -> Tuple[str, str]:
+    sev = classify_severity(state)
+    date_s, time_s = fmt_tg_date_time(str(state.get("build_time_utc", "")))
+
+    max_lines = int(state.get("max_lines", 3000))
+    total = int(state.get("final_total", 0))
+    p = pct(total, max_lines)
+    rest = max_lines - total
+
+    sha = short_hash(str(state.get("sha256_final", "")))
+    url = repo_report_url(str(state.get("repo", "")))
+
+    avg7, delta, deviation, eval_line = trend_eval(stats, prev_rec, total)
+    problems = tg_problems_lines(state)
+
+    hdr = tg_header(sev)
+
+    # tg_alert only for WARNING/ERROR
+    tg_alert = ""
+    if sev != "ОК" and problems:
+        tg_alert = "\n".join(problems).rstrip() + "\n"
+
+    if sev == "ОШИБКА":
+        msg = hdr + [
+            "🚨 Сборка завершена с ошибками",
+            "🔴 Критический статус",
+            "",
+            f"🗓 {date_s}",
+            f"🕒 {time_s}",
+            "",
+            "━━━━━━━━━━━━━━━━━━",
+            "📦 РЕЗУЛЬТАТ",
+            "━━━━━━━━━━━━━━━━━━",
+            f"📊 {total} / {max_lines} ({p}%) {limit_badge(p)}",
+            f"🧮 Остаток: {rest} строк",
+            "",
+            "━━━━━━━━━━━━━━━━━━",
+            "📈 ТРЕНД",
+            "━━━━━━━━━━━━━━━━━━",
+            f"Среднее (7): {avg7}",
+            f"Δ к прошлой: {delta:+d}",
+            f"Отклонение: {deviation:+d}",
+            eval_line,
+            "",
+            "━━━━━━━━━━━━━━━━━━",
+            "⚠ ПРОБЛЕМЫ",
+            "━━━━━━━━━━━━━━━━━━",
+        ]
+        msg += (problems if problems else ["—"])
+        msg += ["", f"🔐 sha256: {sha}"]
+        if url:
+            msg += [f"🔗 Отчёт: {url}"]
+        return "\n".join(msg).rstrip() + "\n", tg_alert
+
+    if sev == "ПРЕДУПРЕЖДЕНИЕ":
+        msg = hdr + [
+            "⚠️ Сборка завершена с предупреждениями",
+            "🟡 Требует внимания",
+            "",
+            f"🗓 {date_s}",
+            f"🕒 {time_s}",
+            "",
+            "━━━━━━━━━━━━━━━━━━",
+            "📦 РЕЗУЛЬТАТ",
+            "━━━━━━━━━━━━━━━━━━",
+            f"📊 {total} / {max_lines} ({p}%) {limit_badge(p)}",
+            f"🧮 Остаток: {rest} строк",
+            "",
+            "━━━━━━━━━━━━━━━━━━",
+            "📈 ТРЕНД",
+            "━━━━━━━━━━━━━━━━━━",
+            f"Среднее (7): {avg7}",
+            f"Δ к прошлой: {delta:+d}",
+            f"Отклонение: {deviation:+d}",
+            eval_line,
+            "",
+            "━━━━━━━━━━━━━━━━━━",
+            "⚠ ПРОБЛЕМЫ",
+            "━━━━━━━━━━━━━━━━━━",
+        ]
+        msg += (problems if problems else ["—"])
+        msg += ["", f"🔐 sha256: {sha}"]
+        if url:
+            msg += [f"🔗 Отчёт: {url}"]
+        return "\n".join(msg).rstrip() + "\n", tg_alert
+
+    # OK (approved compact)
+    msg = hdr + [
+        "🚀 Сборка завершена",
+        "🟢 Система стабильна",
+        "",
+        f"🗓 {date_s}",
+        f"🕒 {time_s}",
+        "",
+        f"📊 {total} / {max_lines} ({p}%) {limit_badge(p)}",
+        "",
+        "📈 ТРЕНД",
+        f"Среднее (7): {avg7}",
+        f"Δ к прошлой: {delta:+d}",
+        eval_line,
+        "",
+        "✅ Замечаний нет" if not problems else "⚠️ Есть замечания",
+        "",
+        f"🔐 sha256: {sha}",
+    ]
+    if url:
+        msg.append(f"🔗 Отчёт: {url}")
+    return "\n".join(msg).rstrip() + "\n", ""
 
 
 def main() -> int:
-    state = _load_json(STATE_PATH, {})
-    stats = _load_json(STATS_PATH, [])
+    DIST.mkdir(parents=True, exist_ok=True)
 
-    repo = str(state.get("repo") or os.getenv("GITHUB_REPOSITORY", ""))
+    state = load_json(STATE_JSON, {})
+    if not isinstance(state, dict) or not state:
+        # minimal fallback, don't crash workflow
+        now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        state = {
+            "build_time_utc": now,
+            "repo": "unknown/unknown",
+            "output": "dist/inside-kvas.lst",
+            "max_lines": 3000,
+            "near_limit_threshold": 2900,
+            "sha256_final": "",
+            "itdog_domains": [],
+            "v2fly_extras": [],
+            "final_domains": [],
+            "itdog_total": 0,
+            "v2fly_total": 0,
+            "final_total": 0,
+            "truncated": 0,
+            "bad_output_lines": 0,
+            "v2fly_ok": 0,
+            "v2fly_fail": 0,
+            "v2fly_categories": [],
+            "v2fly_per_category": {},
+            "warnings": ["state.json отсутствует/повреждён"],
+            "failed_categories": [],
+            "empty_categories": [],
+            "prev": {"itdog_domains": [], "v2fly_extras": [], "final_domains": []},
+        }
+        dump_json(STATE_JSON, state)
 
-    try:
-        # Generate report.md (always overwrite)
-        _write_text(REPORT_MD_PATH, _format_report_md(state, stats))
+    stats, prev_rec = append_stats(state)
 
-        # Telegram messages
-        tg_main, tg_alert, tg_failure = format_tg(state, stats, repo)
-        _write_text(TG_MESSAGE_PATH, tg_main)
-        if tg_alert:
-            _write_text(TG_ALERT_PATH, tg_alert)
-        else:
-            if TG_ALERT_PATH.exists():
-                TG_ALERT_PATH.unlink()
-        if tg_failure:
-            _write_text(TG_FAILURE_PATH, tg_failure)
-        else:
-            if TG_FAILURE_PATH.exists():
-                TG_FAILURE_PATH.unlink()
+    REPORT_MD.write_text(format_report_md(state, stats, prev_rec), encoding="utf-8")
 
-        return 0
-    except Exception as e:
-        # Never crash: emit CRITICAL telegram message
-        repo2 = repo or os.getenv("GITHUB_REPOSITORY", "")
-        run_url = _github_actions_run_url(repo2)
-        dt = datetime.now()
-        d, t = _fmt_date_time_msk(dt)
-        msg = (
-            "📦 BUILD SYSTEM\n"
-            "🔴 GitHub Actions\n"
-            "━━━━━━━━━━━━━━━━━━\n"
-            "🚨 CRITICAL\n\n"
-            "❌ Ошибка формирования отчёта\n"
-            "🔴 Критический статус\n\n"
-            f"🗓 {d}\n"
-            f"🕒 {t} МСК\n\n"
-            f"⚠ Причина: {type(e).__name__}: {e}\n"
-        )
-        if run_url:
-            msg += f"\n⚠ Логи: GitHub Actions (run)\n{run_url}\n"
-        _write_text(TG_MESSAGE_PATH, msg)
-        _write_text(TG_FAILURE_PATH, msg)
-        return 1
+    tg_msg, tg_alert = format_tg(state, stats, prev_rec)
+    TG_MESSAGE.write_text(tg_msg, encoding="utf-8")
+    if tg_alert.strip():
+        TG_ALERT.write_text(tg_alert, encoding="utf-8")
+    else:
+        TG_ALERT.unlink(missing_ok=True)
+
+    return 0
 
 
 if __name__ == "__main__":
