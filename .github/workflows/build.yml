@@ -3,7 +3,7 @@ name: build-kvas-list
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 */6 * * *"
+    - cron: "15 0 * * 2"
 
 permissions:
   contents: write
