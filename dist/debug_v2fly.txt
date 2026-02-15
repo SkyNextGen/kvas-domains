@@ -1,5 +1,5 @@
 v2fly debug
-cats: discord, instagram, openai, telegram, whatsapp, youtube, facebook, wbgames, pornhub, ubisoft
+cats: discord, instagram, openai, telegram, whatsapp, youtube, facebook, wbgames, pornhub, ubisoft, sdgdhsdrjdjy
 
 [discord] status=OK valid=28 invalid=0 skipped=0
 [instagram] status=OK valid=72 invalid=2 skipped=0
@@ -11,3 +11,4 @@ cats: discord, instagram, openai, telegram, whatsapp, youtube, facebook, wbgames
 [wbgames] status=OK valid=6 invalid=0 skipped=0
 [pornhub] status=OK valid=9 invalid=0 skipped=0
 [ubisoft] status=OK valid=31 invalid=1 skipped=0
+[sdgdhsdrjdjy] status=FAIL error=HTTP 404

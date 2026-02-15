@@ -2,7 +2,7 @@
 
 ## 🧭 Общая информация
 
-> 🕒 **Сборка:** 15 фев 2026, 21:50 МСК  
+> 🕒 **Сборка:** 15 фев 2026, 21:54 МСК  
 > 📦 **Репозиторий:** SkyNextGen/kvas-domains  
 > 📄 **Выходной файл:** `dist/inside-kvas.lst`  
 > 📏 Лимит строк: **1850**
@@ -25,6 +25,7 @@
 ### 🔴 Критический статус
 
 ### ⚠️ Замечания
+- 🔴 Категории не скачались/не распарсились: sdgdhsdrjdjy (HTTP 404)
 - 🟠 Почти лимит
 
 ---
@@ -34,22 +35,22 @@
 ### 🗂 itdog
 
 - Всего доменов: **1123**
-- Изменение: **+1123 / -0**
+- Изменение: **+0 / -0**
 
 ### 🌐 v2fly (extras)
 
 - Всего extras: **707**
-- Изменение: **+707 / -0**
-- Категорий: **10**
+- Изменение: **+0 / -0**
+- Категорий: **11**
 
 🟢 OK: 10  
-🔴 ОШИБКА: 0  
+🔴 ОШИБКА: 1  
 🟡 ПУСТО: 0
 
 ### 📦 Итоговый список
 
 - Всего: **1830**
-- Изменение: **+1830 / -0**
+- Изменение: **+0 / -0**
 - Обрезано: **0**
 
 ---
@@ -80,6 +81,7 @@
 | wbgames | 6 | 5 | 0 | 0 | 🟢 |
 | pornhub | 9 | 6 | 0 | 0 | 🟢 |
 | ubisoft | 31 | 31 | 1 | 0 | 🟢 |
+| sdgdhsdrjdjy | 0 | 0 | 0 | 0 | 🔴 |
 
 ---
 
@@ -94,26 +96,7 @@
 
 ### itdog
 **➕ Добавлено**
-- 10minutemail.com
-- 1337x.to
-- 24.kg
-- 4freerussia.org
-- 4pda.to
-- 4pda.ws
-- 4pna.com
-- 5sim.net
-- 7dniv.rv.ua
-- 7tv.app
-- 7tv.io
-- 9tv.co.il
-- a-vrv.akamaized.net
-- abercrombie.com
-- abook-club.ru
-- academy.terrasoft.ua
-- activatica.org
-- adguard.com
-- adidas.com
-- adminforge.de
+- —
 
 **➖ Удалено**
 - —
@@ -122,26 +105,7 @@
 
 ### v2fly extras
 **➕ Добавлено**
-- aboutfacebook.com
-- accessfacebookfromschool.com
-- acebooik.com
-- acebook.com
-- achat-followers-instagram.com
-- acheter-followers-instagram.com
-- acheterdesfollowersinstagram.com
-- acheterfollowersinstagram.com
-- advancediddetection.com
-- airhorn.solutions
-- airhornbot.com
-- askfacebook.net
-- askfacebook.org
-- atdmt2.com
-- atlasdmt.com
-- atlasonepoint.com
-- bigbeans.solutions
-- bookstagram.com
-- buyingfacebooklikes.com
-- careersatfb.com
+- —
 
 **➖ Удалено**
 - —
@@ -150,26 +114,7 @@
 
 ### итоговый список
 **➕ Добавлено**
-- 10minutemail.com
-- 1337x.to
-- 24.kg
-- 4freerussia.org
-- 4pda.to
-- 4pda.ws
-- 4pna.com
-- 5sim.net
-- 7dniv.rv.ua
-- 7tv.app
-- 7tv.io
-- 9tv.co.il
-- a-vrv.akamaized.net
-- abercrombie.com
-- abook-club.ru
-- aboutfacebook.com
-- academy.terrasoft.ua
-- accessfacebookfromschool.com
-- acebooik.com
-- acebook.com
+- —
 
 **➖ Удалено**
 - —
@@ -192,10 +137,10 @@
 - ➡ Стабильно
 
 ### 🧠 v2fly здоровье
-- fail=0 🔴
+- fail=1 🔴
 - empty=0 🟡
 
 ### ✅ Рекомендации
-- отсутствуют
+- проверить: sdgdhsdrjdjy
 
 </details>
