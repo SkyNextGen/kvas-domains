@@ -3,7 +3,7 @@ name: build-kvas-list
 on:
   workflow_dispatch:
   schedule:
-    - cron: "15 0 * * 2"   # Вторник 03:15 Москва (00:15 UTC)
+    - cron: "15 0 * * 2"
 
 permissions:
   contents: write
@@ -22,13 +22,15 @@ jobs:
           python-version: "3.11"
 
       - name: Run builder
-        run: python src/build.py
+        run: |
+          python src/build.py
 
       - name: Commit dist
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions@users.noreply.github.com"
           git add -A dist
+
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
@@ -43,14 +45,14 @@ jobs:
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
           if [ -z "$TG_BOT_TOKEN" ] || [ -z "$TG_CHAT_ID" ]; then
-            echo "Telegram secrets missing"
+            echo "Telegram secrets missing, skip"
             exit 0
           fi
 
           curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendDocument" \
             -F chat_id="$TG_CHAT_ID" \
             -F document=@dist/report.md \
-            -F caption="KVAS Domains — сборка успешно выполнена"
+            -F caption="KVAS Domains — сборка успешно выполнена" >/dev/null || true
 
       - name: Notify Telegram (failure)
         if: failure()
@@ -59,15 +61,14 @@ jobs:
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
           if [ -z "$TG_BOT_TOKEN" ] || [ -z "$TG_CHAT_ID" ]; then
-            echo "Telegram secrets missing"
+            echo "Telegram secrets missing, skip"
             exit 0
           fi
 
           RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
+          MSG=$'🚨 KVAS Domains — сборка упала ❌\n\n🔎 Подробности:\n'"$RUN_URL"
+
           curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
             -d chat_id="$TG_CHAT_ID" \
-            --data-urlencode text="KVAS Domains — сборка упала ❌
-
-Подробности:
-${RUN_URL}"
+            --data-urlencode "text=${MSG}" >/dev/null || true
