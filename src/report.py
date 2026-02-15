@@ -320,8 +320,19 @@ def main() -> int:
         )
     table_block = "\n".join(table_rows) if table_rows else "| — | 0 | 0 | 0 | 0 | — |"
 
-    failed_inline = "none" if not failed_categories else ", ".join(failed_categories)
-    empty_inline = "none" if not empty_categories else ", ".join(empty_categories)
+    failed_inline = "НЕТ" if not failed_categories else ", ".join(failed_categories)
+    empty_inline = "НЕТ" if not empty_categories else ", ".join(empty_categories)
+
+    # warnings summary (report)
+    active_warnings_count = 0
+    if failed_categories: active_warnings_count += 1
+    if empty_categories: active_warnings_count += 1
+    if near_limit: active_warnings_count += 1
+    if bad_output_lines > 0: active_warnings_count += 1
+    if truncated_count > 0: active_warnings_count += 1
+
+    warnings_status_line = "🟢 Проблем не обнаружено" if active_warnings_count == 0 else "🔴 Обнаружены проблемы"
+
 
     # report.md
     deviation_txt = "—" if deviation is None else (f"+{deviation}" if deviation >= 0 else str(deviation))
@@ -393,6 +404,9 @@ def main() -> int:
 ---
 
 ## ⚠ Предупреждения
+
+{warnings_status_line}
+Всего активных предупреждений: {active_warnings_count}
 
 - Не удалось получить категории (скачивание/парсинг): {failed_inline}
 - Пустые категории (0 доменов): {empty_inline}
