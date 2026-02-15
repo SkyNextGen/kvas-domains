@@ -1,0 +1,4 @@
+UTC: 2026-02-15T06:15:00+00:00
+Categories file: /home/runner/work/kvas-domains/kvas-domains/src/v2fly_categories.txt
+Categories count: 0
+

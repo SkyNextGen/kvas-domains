@@ -5,5 +5,14 @@
     "itdog": 1123,
     "v2fly": 0,
     "warnings": []
+  },
+  {
+    "ts_utc": "2026-02-15T06:15:00+00:00",
+    "total": 1123,
+    "itdog": 1123,
+    "v2fly": 0,
+    "warnings": [
+      "v2fly: нет файла src/v2fly_categories.txt (v2fly пропущен)"
+    ]
   }
 ]
