@@ -5,9 +5,6 @@ on:
   schedule:
     - cron: "0 */6 * * *"
 
-# IMPORTANT:
-# To allow "git push" from Actions, repo settings must allow write access for GITHUB_TOKEN:
-# Settings → Actions → General → Workflow permissions → Read and write permissions
 permissions:
   contents: write
 
@@ -18,9 +15,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          persist-credentials: true
-          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -33,17 +27,14 @@ jobs:
           python src/report.py
 
       - name: Commit dist
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add dist/
           git diff --cached --quiet || git commit -m "Update domain lists"
-          # Ensure authenticated remote (works with GITHUB_TOKEN when write permissions are enabled)
-          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push
 
+      # ✅ Только текстовое уведомление (без отправки файла report.md)
       - name: Notify Telegram (report)
         if: always()
         env:
@@ -54,15 +45,15 @@ jobs:
             echo "TG_BOT_TOKEN/TG_CHAT_ID not set; skip"
             exit 0
           fi
+
           if [ ! -s "dist/tg_message.txt" ]; then
             echo "dist/tg_message.txt missing/empty; skip"
             exit 0
           fi
 
-          TEXT="$(cat dist/tg_message.txt)"
+          curl -sS -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage"             -d "chat_id=${TG_CHAT_ID}"             --data-urlencode "text@dist/tg_message.txt"             -d "disable_web_page_preview=true" >/dev/null
 
-          curl -sS -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage"             -d "chat_id=${TG_CHAT_ID}"             --data-urlencode "text=${TEXT}"             -d "disable_web_page_preview=true" >/dev/null
-
+      # (опционально) отдельное алерт-сообщение, если dist/tg_alert.txt существует и не пустой
       - name: Notify Telegram (alerts)
         if: always()
         env:
@@ -72,13 +63,12 @@ jobs:
           if [ -z "${TG_BOT_TOKEN}" ] || [ -z "${TG_CHAT_ID}" ]; then
             exit 0
           fi
+
           if [ ! -s "dist/tg_alert.txt" ]; then
             exit 0
           fi
 
-          TEXT="$(cat dist/tg_alert.txt)"
-
-          curl -sS -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage"             -d "chat_id=${TG_CHAT_ID}"             --data-urlencode "text=${TEXT}"             -d "disable_web_page_preview=true" >/dev/null
+          curl -sS -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage"             -d "chat_id=${TG_CHAT_ID}"             --data-urlencode "text@dist/tg_alert.txt"             -d "disable_web_page_preview=true" >/dev/null
 
       - name: Notify Telegram (failure)
         if: failure()
@@ -93,9 +83,8 @@ jobs:
           TEXT="📦 BUILD SYSTEM
 🔴 GitHub Actions
 ━━━━━━━━━━━━━━━━━━
-🚨 CRITICAL
-
-❌ Workflow упал до формирования отчёта.
+🔴 ПРИОРИТЕТ: ВЫСОКИЙ
+🚨 Workflow упал до формирования отчёта.
 
 🔗 Actions:
 https://github.com/${GITHUB_REPOSITORY}/actions"
