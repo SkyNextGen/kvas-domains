@@ -4,9 +4,10 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, List, Set, Tuple, Optional
+from typing import Dict, List, Optional, Tuple
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,6 +20,8 @@ TG_ALERT_OUT = DIST_DIR / "tg_alert.txt"
 STATS_JSON = DIST_DIR / "stats.json"
 
 
+# ------------------------- helpers -------------------------
+
 def load_json(path: Path, default):
     if not path.exists():
         return default
@@ -28,42 +31,86 @@ def load_json(path: Path, default):
         return default
 
 
-def diff_sets(prev: Set[str], curr: Set[str]) -> Tuple[List[str], List[str]]:
-    added = sorted(curr - prev)
-    removed = sorted(prev - curr)
+def short_hash(h: str) -> str:
+    h = (h or "").strip()
+    if len(h) < 10:
+        return h
+    return f"{h[:4]}…{h[-4:]}"
+
+
+def now_msk_dt() -> datetime:
+    return datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=3)))
+
+
+def format_date_msk(d: datetime) -> str:
+    return d.strftime("%d.%m.%Y")
+
+
+def format_time_msk(d: datetime) -> str:
+    return d.strftime("%H:%M:%S МСК")
+
+
+def format_build_time_msk_from_state(build_time_utc_raw: str) -> str:
+    """
+    state.json хранит build_time_utc как 'YYYY-MM-DD HH:MM:SS UTC'
+    или 'YYYY-MM-DD HH:MM:SS'
+    """
+    s = (build_time_utc_raw or "").replace("UTC", "").strip()
+    try:
+        dt_utc = datetime.strptime(s, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+        dt_msk = dt_utc.astimezone(timezone(timedelta(hours=3)))
+    except Exception:
+        return s or "—"
+
+    months = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"]
+    m = months[dt_msk.month - 1]
+    return f"{dt_msk.day:02d} {m} {dt_msk.year}, {dt_msk:%H:%M} МСК"
+
+
+def diff_counts(prev_list: List[str], curr_list: List[str]) -> Tuple[int, int]:
+    prev = set(prev_list or [])
+    curr = set(curr_list or [])
+    added = len(curr - prev)
+    removed = len(prev - curr)
     return added, removed
 
 
 def format_change(added: int, removed: int) -> str:
-    return f"+{added} / -{removed}"
+    return f"+{added} / −{removed}"
 
 
-def format_top_list(items: List[str], limit: int = 20) -> str:
-    if not items:
-        return "- none"
-    return "\n".join([f"{i}. {x}" for i, x in enumerate(items[:limit], 1)])
+def usage_badge(pct: float) -> str:
+    # 🟢 <85, 🟡 85–96, 🔴 ≥96
+    if pct >= 96.0:
+        return "🔴"
+    if pct >= 85.0:
+        return "🟡"
+    return "🟢"
 
 
-def short_hash(h: str) -> str:
-    if not h or len(h) < 8:
-        return h or ""
-    return f"{h[:4]}...{h[-4:]}"
+def near_limit_flag(total: int, threshold: int) -> bool:
+    return total >= threshold
 
 
-def now_msk_str() -> str:
-    msk = datetime.now(timezone.utc) + timedelta(hours=3)
-    return msk.strftime("%Y-%m-%d %H:%M МСК")
+def status_text_table(status: str) -> str:
+    s = (status or "").strip()
+    if s.startswith("OK"):
+        return "🟢 ОК"
+    if s.startswith("EMPTY"):
+        return "🟡 ПУСТО"
+    if s.startswith("FAIL"):
+        return "🔴 ОШИБКА"
+    # fallback
+    return s or "—"
 
 
-def make_v2fly_table_rows(cats: List[str], per_cat: Dict[str, Dict]) -> str:
-    rows: List[str] = []
-    for cat in cats:
-        d = per_cat.get(cat, {})
-        rows.append(
-            f"| {cat} | {int(d.get('valid_domains', 0))} | {int(d.get('extras_added', 0))} | "
-            f"{int(d.get('invalid_lines', 0))} | {int(d.get('skipped_directives', 0))} | {d.get('status', 'FAIL')} |"
-        )
-    return "\n".join(rows)
+def build_run_url() -> Optional[str]:
+    server = os.getenv("GITHUB_SERVER_URL", "").strip()
+    repo = os.getenv("GITHUB_REPOSITORY", "").strip()
+    run_id = os.getenv("GITHUB_RUN_ID", "").strip()
+    if server and repo and run_id:
+        return f"{server}/{repo}/actions/runs/{run_id}"
+    return None
 
 
 def append_stats(total: int, itdog: int, v2fly: int, warnings: List[str]) -> Optional[int]:
@@ -85,7 +132,7 @@ def append_stats(total: int, itdog: int, v2fly: int, warnings: List[str]) -> Opt
         "warnings": warnings,
     }
     data.append(rec)
-    data = data[-200:]
+    data = data[-400:]
     STATS_JSON.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
     if isinstance(prev_total, int):
@@ -93,174 +140,402 @@ def append_stats(total: int, itdog: int, v2fly: int, warnings: List[str]) -> Opt
     return None
 
 
-def build_tg_message(ts_msk: str, total: int, delta_total: Optional[int], has_warnings: bool) -> str:
-    delta_str = f"{delta_total:+d}" if delta_total is not None else "—"
-    warn_line = "⚠️ Есть предупреждения" if has_warnings else "✅ Без предупреждений"
-    return (
-        "📦 KVAS Domains — сборка завершена\n"
-        f"🕒 {ts_msk}\n\n"
-        f"📌 Итоговых доменов: {total} (Δ {delta_str})\n"
-        f"{warn_line}\n"
-    )
+def last_totals_from_stats(n: int = 7) -> List[int]:
+    data = load_json(STATS_JSON, [])
+    if not isinstance(data, list) or not data:
+        return []
+    totals: List[int] = []
+    for row in data[-n:]:
+        if isinstance(row, dict) and isinstance(row.get("total"), int):
+            totals.append(int(row["total"]))
+    return totals
 
 
-def build_tg_alert(ts_msk: str, warnings: List[str]) -> str:
-    if not warnings:
-        return ""
-    body = "\n".join([f"- {w}" for w in warnings])
-    return (
-        "⚠️ KVAS Domains — предупреждения\n"
-        f"🕒 {ts_msk}\n\n"
-        f"{body}\n"
-    )
+def avg(nums: List[int]) -> Optional[float]:
+    if not nums:
+        return None
+    return sum(nums) / len(nums)
+
+
+def ascii_trend_block(values: List[int]) -> str:
+    """
+    Однострочный мини-график на 7 значений.
+    """
+    if len(values) < 2:
+        return "—"
+
+    vmin = min(values)
+    vmax = max(values)
+    span = max(1, vmax - vmin)
+
+    bars = "▁▂▃▄▅▆▇█"
+    line = []
+    for v in values:
+        idx = int(round((v - vmin) / span * (len(bars) - 1)))
+        idx = max(0, min(len(bars) - 1, idx))
+        line.append(bars[idx])
+
+    return f"{vmin} {''.join(line)} {vmax}"
+
+
+def trend_label(curr_delta: Optional[int], avg_delta: Optional[float]) -> Tuple[str, str]:
+    """
+    Возвращает (стрелка/лейбл, оценка)
+    """
+    if curr_delta is None:
+        return "➡", "недостаточно данных"
+
+    if curr_delta > 0:
+        arrow = "📈"
+    elif curr_delta < 0:
+        arrow = "📉"
+    else:
+        arrow = "➡"
+
+    if avg_delta is None or avg_delta == 0:
+        return arrow, "—"
+
+    ratio = abs(curr_delta) / abs(avg_delta) if avg_delta != 0 else None
+    if ratio is None:
+        return arrow, "—"
+
+    if ratio >= 2.0 and abs(curr_delta) >= 10:
+        return arrow, "⚠ выше среднего ×2"
+    return arrow, "норма"
+
+
+def build_completion_line(has_errors: bool, has_warnings: bool) -> str:
+    if has_errors:
+        return "🚨 Сборка завершена с ошибками"
+    if has_warnings:
+        return "⚠️ Сборка завершена с предупреждениями"
+    return "🚀 Сборка завершена"
+
+
+def build_system_line(system_level: str) -> str:
+    if system_level == "critical":
+        return "🔴 Критический статус"
+    if system_level == "attention":
+        return "🟡 Система требует внимания"
+    return "🟢 Система стабильна"
 
 
 def main() -> int:
     state = load_json(STATE_JSON, {})
     if not isinstance(state, dict):
-        raise SystemExit("Bad state.json")
+        raise SystemExit("Bad dist/state.json")
 
-    prev = state.get("prev", {}) if isinstance(state.get("prev", {}), dict) else {}
+    prev = state.get("prev", {}) if isinstance(state.get("prev"), dict) else {}
 
-    repo = state.get("repo", "unknown/unknown")
-    output = state.get("output", "dist/inside-kvas.lst")
+    repo = str(state.get("repo", "unknown/unknown"))
+    output = str(state.get("output", "dist/inside-kvas.lst"))
     max_lines = int(state.get("max_lines", 3000))
     threshold = int(state.get("near_limit_threshold", 2900))
 
-    itdog_set = set(state.get("itdog_domains", []) or [])
-    v2fly_set = set(state.get("v2fly_extras", []) or [])
-    final_set = set(state.get("final_domains", []) or [])
+    itdog_domains = state.get("itdog_domains", []) or []
+    v2fly_extras = state.get("v2fly_extras", []) or []
+    final_domains = state.get("final_domains", []) or []
+    if not isinstance(itdog_domains, list): itdog_domains = []
+    if not isinstance(v2fly_extras, list): v2fly_extras = []
+    if not isinstance(final_domains, list): final_domains = []
 
-    prev_itdog = set(prev.get("itdog_domains", []) or [])
-    prev_v2fly = set(prev.get("v2fly_extras", []) or [])
-    prev_final = set(prev.get("final_domains", []) or [])
+    itdog_total = len(set(itdog_domains))
+    v2fly_total = len(set(v2fly_extras))
+    final_total = len(set(final_domains))
 
-    itdog_added, itdog_removed = diff_sets(prev_itdog, itdog_set)
-    v2fly_added, v2fly_removed = diff_sets(prev_v2fly, v2fly_set)
-    final_added, final_removed = diff_sets(prev_final, final_set)
+    it_add, it_rem = diff_counts(prev.get("itdog_domains", []) or [], itdog_domains)
+    v2_add, v2_rem = diff_counts(prev.get("v2fly_extras", []) or [], v2fly_extras)
+    f_add, f_rem = diff_counts(prev.get("final_domains", []) or [], final_domains)
 
-    itdog_change = format_change(len(itdog_added), len(itdog_removed))
-    v2fly_change = format_change(len(v2fly_added), len(v2fly_removed))
-    final_change = format_change(len(final_added), len(final_removed))
+    it_change = format_change(it_add, it_rem)
+    v2_change = format_change(v2_add, v2_rem)
+    f_change = format_change(f_add, f_rem)
 
     v2fly_ok = int(state.get("v2fly_ok", 0))
     v2fly_fail = int(state.get("v2fly_fail", 0))
-
     truncated_count = int(state.get("truncated", 0))
     bad_output_lines = int(state.get("bad_output_lines", 0))
-    truncated_yesno = str(state.get("truncated_yesno", "NO"))
-
-    build_time_utc = str(state.get("build_time_utc", "")).replace(" UTC", "")
-    sha = short_hash(str(state.get("sha256_final", "")))
 
     warnings = state.get("warnings", []) or []
-    if not isinstance(warnings, list):
-        warnings = []
-
     failed_categories = state.get("failed_categories", []) or []
-    if not isinstance(failed_categories, list):
-        failed_categories = []
-
     empty_categories = state.get("empty_categories", []) or []
-    if not isinstance(empty_categories, list):
-        empty_categories = []
-
-    final_total = len(final_set)
-    itdog_total = len(itdog_set)
-    v2fly_total = len(v2fly_set)
+    if not isinstance(warnings, list): warnings = []
+    if not isinstance(failed_categories, list): failed_categories = []
+    if not isinstance(empty_categories, list): empty_categories = []
 
     usage_pct = round((final_total / max_lines) * 100, 1) if max_lines else 0.0
-    near_limit = "YES" if final_total >= threshold else "NO"
+    badge = usage_badge(usage_pct)
+    near_limit = near_limit_flag(final_total, threshold)
 
+    has_errors = (v2fly_fail > 0) or (bad_output_lines > 0)
+    has_warnings = bool(warnings) or bool(empty_categories) or near_limit or (truncated_count > 0)
+
+    if has_errors or usage_pct >= 96.0:
+        system_level = "critical"
+    elif has_warnings or usage_pct >= 85.0:
+        system_level = "attention"
+    else:
+        system_level = "stable"
+
+    completion_line = build_completion_line(has_errors, has_warnings)
+    system_line = build_system_line(system_level)
+
+    build_time_utc = str(state.get("build_time_utc", "")).replace(" UTC", "")
+    build_time_msk = format_build_time_msk_from_state(build_time_utc)
+
+    sha = short_hash(str(state.get("sha256_final", "")))
+
+    # trend
+    delta_total = append_stats(final_total, itdog_total, v2fly_total, warnings)
+    totals7_after = last_totals_from_stats(7)
+    avg7 = avg(totals7_after)
+    avg7_int = int(round(avg7)) if avg7 is not None else None
+    deviation = (final_total - avg7_int) if avg7_int is not None else None
+
+    deltas: List[int] = []
+    if len(totals7_after) >= 2:
+        for i in range(1, len(totals7_after)):
+            deltas.append(totals7_after[i] - totals7_after[i - 1])
+    avg_delta = avg(deltas) if deltas else None
+
+    arrow, growth_eval = trend_label(delta_total, avg_delta)
+    trend_ascii = ascii_trend_block(totals7_after) if totals7_after else "—"
+
+    # intersection
+    intersection = len(set(itdog_domains) & set(v2fly_extras))
+
+    # v2fly per-category table (translated status)
     cats = state.get("v2fly_categories", []) or []
     per_cat = state.get("v2fly_per_category", {}) or {}
-    if not isinstance(cats, list):
-        cats = []
-    if not isinstance(per_cat, dict):
-        per_cat = {}
+    if not isinstance(cats, list): cats = []
+    if not isinstance(per_cat, dict): per_cat = {}
+    cats_total = len(cats)
 
-    table_rows = make_v2fly_table_rows(cats, per_cat)
+    table_rows: List[str] = []
+    for cat in cats:
+        d = per_cat.get(cat, {}) if isinstance(per_cat.get(cat, {}), dict) else {}
+        table_rows.append(
+            f"| {cat} | {int(d.get('valid_domains', 0))} | {int(d.get('extras_added', 0))} | "
+            f"{int(d.get('invalid_lines', 0))} | {int(d.get('skipped_directives', 0))} | {status_text_table(str(d.get('status', '')))} |"
+        )
+    table_block = "\n".join(table_rows) if table_rows else "| — | 0 | 0 | 0 | 0 | — |"
 
-    # ---- Warnings inline (без “двух none”)
     failed_inline = "none" if not failed_categories else ", ".join(failed_categories)
     empty_inline = "none" if not empty_categories else ", ".join(empty_categories)
 
-    report = f"""# KVAS domains build report
+    # report.md
+    deviation_txt = "—" if deviation is None else (f"+{deviation}" if deviation >= 0 else str(deviation))
+    delta_txt = "—" if delta_total is None else f"{delta_total:+d}"
+    avg_delta_txt = "—" if avg_delta is None else f"{avg_delta:+.1f}"
 
-Build time (UTC): {build_time_utc}
-Repo: {repo}
-Output: {output}
-Max lines: {max_lines}
+    report = f"""# 📊 Отчёт сборки доменов KVAS
 
-## Summary
-- itdog:
-  - total: {itdog_total}
-  - change vs prev: {itdog_change}
-- v2fly (extras only: not in itdog):
-  - total: {v2fly_total}
-  - change vs prev: {v2fly_change}
-  - lists: ok={v2fly_ok}, fail={v2fly_fail}
-- final output:
-  - total: {final_total}
-  - change vs prev: {final_change}
-  - truncated: {truncated_count}
+{completion_line}
+{system_line}
 
-## Limit status
-- usage: {final_total} / {max_lines} ({usage_pct}%)
-- near limit: {near_limit} (threshold: {threshold})
+**Сборка:** {build_time_msk}
+**Репозиторий:** {repo}
+**Файл:** {output}
+**Лимит:** {max_lines} строк
 
-## itdog changes vs prev (top 20)
-### Added
-{format_top_list(itdog_added, 20)}
-### Removed
-{format_top_list(itdog_removed, 20)}
+---
 
-## v2fly extras changes vs prev (top 20)
-### Added
-{format_top_list(v2fly_added, 20)}
-### Removed
-{format_top_list(v2fly_removed, 20)}
+## 📦 Результат
 
-## final output changes vs prev (top 20)
-### Added
-{format_top_list(final_added, 20)}
-### Removed
-{format_top_list(final_removed, 20)}
+| Показатель | Значение |
+|---|---:|
+| Итоговых строк | **{final_total}** |
+| Использование | **{usage_pct}%** {badge} |
+| Запас до лимита | **{max_lines - final_total}** строк |
+| Близко к лимиту (≥ {threshold}) | **{"ДА" if near_limit else "НЕТ"}** |
+| Обрезка по лимиту | **{"ДА" if truncated_count > 0 else "НЕТ"}** |
+| Некорректные строки в выводе | **{bad_output_lines}** |
 
-## v2fly per-category stats
+---
+
+## 📈 Тренд (последние 7 сборок)
+
+- Среднее за 7: **{avg7_int if avg7_int is not None else "—"}**
+- Текущий результат: **{final_total}**
+- Отклонение от среднего: **{deviation_txt}**
+- Изменение к прошлой сборке: **{delta_txt}**
+- Средний прирост за 7: **{avg_delta_txt}**
+- Динамика: {arrow} ({growth_eval})
+
+Мини-график:
+```
+{trend_ascii}
+```
+
+---
+
+## 🔄 Изменения (относительно прошлой сборки)
+
+| Источник | Δ | Всего |
+|---|---:|---:|
+| 🟦 itdog | {it_change} | {itdog_total} |
+| 🟩 v2fly extras | {v2_change} | {v2fly_total} |
+| 🧩 итоговый файл | {f_change} | {final_total} |
+
+---
+
+## 📂 Статистика v2fly по категориям
+
 | category | valid_domains | extras_added | invalid_lines | skipped_directives | status |
 |---|---:|---:|---:|---:|---|
-{table_rows}
+{table_block}
 
-Notes:
-- `valid_domains` = домены, извлечённые из категории после фильтра (full:/domain:/голые домены)
-- `extras_added` = домены, которые реально попали в хвост (не пересекаются с itdog)
-- `skipped_directives` = include:/regexp:/keyword:/etc (мы их не разворачиваем)
+Примечания:
+- `valid_domains` = домены, извлечённые из категории (full:/domain:/голые домены)
+- `extras_added` = домены, реально попавшие в хвост (не пересекаются с itdog)
+- `skipped_directives` = include:/regexp:/keyword:/etc (не разворачиваются)
 
-## Warnings
-- Failed categories (download/parse errors): {failed_inline}
-- Empty categories (0 valid domains): {empty_inline}
-- Bad output lines: {bad_output_lines}
-- Truncated output: {truncated_yesno}
+---
 
-## Hashes
-- sha256(final): {sha}
+## ⚠ Предупреждения
+
+- Не удалось получить категории (скачивание/парсинг): {failed_inline}
+- Пустые категории (0 доменов): {empty_inline}
+- Почти достигнут лимит (≥ {threshold} строк): {"ДА" if near_limit else "НЕТ"}
+- Некорректные строки в выводе: {bad_output_lines}
+- Обрезка по лимиту: {"ДА" if truncated_count > 0 else "НЕТ"}
+
+---
+
+## 🧪 Диагностика
+
+- itdog уникальных: **{itdog_total}**
+- v2fly extras: **{v2fly_total}**
+- Пересечение itdog ∩ v2fly: **{intersection}**
+- Запас до лимита: **{max_lines - final_total}** строк
+- v2fly категорий: **{cats_total}** (ok={v2fly_ok}, fail={v2fly_fail}, пусто={len(empty_categories)})
+
+---
+
+## 🔐 Хеш
+
+`sha256: {sha}`
 """
-
     REPORT_OUT.write_text(report, encoding="utf-8")
 
-    # ---- stats + telegram texts
-    delta_total = append_stats(final_total, itdog_total, v2fly_total, warnings)
-    ts_msk = now_msk_str()
+    # Telegram caption (боевой формат)
+    msk_now = now_msk_dt()
+    tg_date = format_date_msk(msk_now)
+    tg_time = format_time_msk(msk_now)
+    run_url = build_run_url()
 
-    TG_MESSAGE_OUT.write_text(
-        build_tg_message(ts_msk, final_total, delta_total, has_warnings=bool(warnings)),
-        encoding="utf-8",
-    )
+    if usage_pct >= 96.0:
+        limit_state = "🔴 КРИТИЧЕСКОЕ приближение к лимиту"
+    elif usage_pct >= 85.0:
+        limit_state = "🟡 Требует внимания (лимит)"
+    else:
+        limit_state = "🟢 Лимит в норме"
 
-    alert_text = build_tg_alert(ts_msk, warnings)
-    if alert_text:
-        TG_ALERT_OUT.write_text(alert_text, encoding="utf-8")
+    rest_line = f"🧮 Остаток: {max_lines - final_total} строк" if usage_pct >= 85.0 else None
+
+    avg7_txt = str(avg7_int) if avg7_int is not None else "—"
+    tg_delta_txt = "—" if delta_total is None else f"{delta_total:+d}"
+    dev_txt = "—" if deviation is None else (f"+{deviation}" if deviation >= 0 else str(deviation))
+    trend_eval_line = f"{arrow} {('Рост' if arrow=='📈' else ('Падение' if arrow=='📉' else 'Стабильно'))}"
+    if growth_eval.startswith("⚠"):
+        trend_eval_line += f" ({growth_eval})"
+
+    problems: List[str] = []
+    if failed_categories:
+        problems.append("🔴 Ошибка загрузки: " + ", ".join(failed_categories[:3]))
+    if empty_categories:
+        problems.append("🟡 Пустые категории: " + ", ".join(empty_categories[:6]))
+    if near_limit:
+        problems.append(f"🟠 Почти достигнут лимит (≥ {threshold})")
+
+    tg_lines: List[str] = [
+        completion_line,
+        system_line,
+        "",
+        f"🗓 {tg_date}",
+        f"🕒 {tg_time}",
+        "",
+        "━━━━━━━━━━━━━━━━━━",
+        "📦 РЕЗУЛЬТАТ",
+        "━━━━━━━━━━━━━━━━━━",
+        "📄 inside-kvas.lst",
+        f"📊 {final_total} / {max_lines} ({usage_pct}%)",
+        limit_state,
+    ]
+    if rest_line:
+        tg_lines.append(rest_line)
+
+    tg_lines += [
+        "",
+        "━━━━━━━━━━━━━━━━━━",
+        "🔄 ИЗМЕНЕНИЯ",
+        "━━━━━━━━━━━━━━━━━━",
+        f"🟦 itdog         {it_change}   ({itdog_total})",
+        f"🟩 v2fly extras  {v2_change}   ({v2fly_total})",
+        f"🧩 итоговый файл {f_change}   ({final_total})",
+        "",
+        "━━━━━━━━━━━━━━━━━━",
+        "📈 ТРЕНД",
+        "━━━━━━━━━━━━━━━━━━",
+        f"Среднее (7): {avg7_txt}",
+        f"Δ к прошлой: {tg_delta_txt}",
+        f"Отклонение: {dev_txt}",
+        trend_eval_line,
+    ]
+
+    if has_errors or has_warnings:
+        tg_lines += [
+            "",
+            "━━━━━━━━━━━━━━━━━━",
+            "⚠ ТРЕБУЕТСЯ ВМЕШАТЕЛЬСТВО" if (has_errors or usage_pct >= 96.0) else "⚠ ПРОБЛЕМЫ",
+            "━━━━━━━━━━━━━━━━━━",
+        ]
+        if problems:
+            tg_lines.extend(problems)
+        else:
+            tg_lines.append("⚠ Есть предупреждения (детали в отчёте)")
+    else:
+        tg_lines += ["", "✅ Замечаний нет"]
+
+    tg_lines += ["", f"🔐 sha256: {sha}"]
+
+    if run_url:
+        tg_lines += ["", "🔎 Run:", run_url]
+
+    tg_lines += ["", "📎 Полный отчёт во вложении"]
+
+    TG_MESSAGE_OUT.write_text("\n".join(tg_lines).strip() + "\n", encoding="utf-8")
+
+    # Telegram alert (отдельно) — только если реально есть предупреждения/ошибки
+    if has_errors or has_warnings:
+        alert_lines: List[str] = [
+            "⚠️ KVAS Domains — предупреждения",
+            f"🕒 {tg_date} {tg_time}",
+            "",
+        ]
+
+        if failed_categories:
+            alert_lines.append("🔴 Ошибки загрузки категорий:")
+            for x in failed_categories[:20]:
+                alert_lines.append(f"- {x}")
+            alert_lines.append("")
+
+        if near_limit:
+            alert_lines.append(f"🟠 Почти достигнут лимит (≥ {threshold} строк)")
+            alert_lines.append("")
+
+        if empty_categories:
+            alert_lines.append("🟡 Пустые категории:")
+            for x in empty_categories[:30]:
+                alert_lines.append(f"- {x}")
+            alert_lines.append("")
+
+        if warnings:
+            alert_lines.append("ℹ️ Прочие предупреждения:")
+            for w in warnings[:30]:
+                alert_lines.append(f"- {w}")
+
+        TG_ALERT_OUT.write_text("\n".join(alert_lines).strip() + "\n", encoding="utf-8")
     else:
         TG_ALERT_OUT.unlink(missing_ok=True)
 
