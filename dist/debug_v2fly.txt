@@ -1,4 +1,4 @@
-UTC: 2026-02-15T06:46:56+00:00
+UTC: 2026-02-15T07:04:30+00:00
 Categories file: /home/runner/work/kvas-domains/kvas-domains/src/v2fly_allow.txt
 Categories count: 8
 
