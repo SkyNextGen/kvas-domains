@@ -1,10 +1,12 @@
-
 name: build-kvas-list
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: "0 */6 * * *"
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -17,56 +19,108 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Run builder + report
         run: |
           python src/build.py
           python src/report.py
 
-      - name: Notify Telegram (unified format)
-        if: success()
+      - name: Commit dist
         run: |
-          DATE=$(date '+%d.%m.%Y')
-          TIME=$(date '+%H:%M:%S МСК')
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add dist/
+          git diff --cached --quiet || git commit -m "Update domain lists"
+          git push
 
-          TEXT="🧩 KVAS • GitHub Actions
-━━━━━━━━━━━━━━━━━━
-🟢 ПРИОРИТЕТ: НИЗКИЙ
-🚀 Сборка завершена
-🟢 Система стабильна
+      - name: Notify Telegram (report)
+        if: always()
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: |
+          python - <<'PY'
+          import os
+          import pathlib
+          import requests
 
-🗓 ${DATE}
-🕒 ${TIME}
+          token = os.environ.get("TG_BOT_TOKEN")
+          chat_id = os.environ.get("TG_CHAT_ID")
 
-📊 $(jq -r '.final_total') / $(jq -r '.limit') ($(jq -r '.limit_percent')%)
+          if not token or not chat_id:
+              raise SystemExit("TG_BOT_TOKEN/TG_CHAT_ID not set")
 
-📈 ТРЕНД
-Среднее (7): $(jq -r '.trend_avg')
-Δ к прошлой: $(jq -r '.trend_delta')
+          msg_path = pathlib.Path("dist/tg_message.txt")
+          if not msg_path.exists():
+              raise SystemExit("dist/tg_message.txt missing")
 
-🔐 sha256: $(jq -r '.sha256_short')
+          text = msg_path.read_text(encoding="utf-8").strip()
+          if not text:
+              raise SystemExit("dist/tg_message.txt empty")
 
-🔗 Отчёт:
-https://github.com/${{ github.repository }}/blob/main/dist/report.md"
+          url = f"https://api.telegram.org/bot{token}/sendMessage"
+          r = requests.post(url, data={
+              "chat_id": chat_id,
+              "text": text,
+              "disable_web_page_preview": "true"
+          }, timeout=30)
+          if r.status_code >= 300:
+              raise SystemExit(f"Telegram sendMessage failed: {r.status_code} {r.text[:200]}")
+          PY
 
-          curl -s -X POST https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage             -d chat_id=${{ secrets.TG_CHAT_ID }}             -d text="$TEXT"
+      - name: Notify Telegram (alerts)
+        if: always()
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: |
+          python - <<'PY'
+          import os
+          import pathlib
+          import requests
+
+          token = os.environ.get("TG_BOT_TOKEN")
+          chat_id = os.environ.get("TG_CHAT_ID")
+
+          if not token or not chat_id:
+              raise SystemExit(0)
+
+          alert_path = pathlib.Path("dist/tg_alert.txt")
+          if not alert_path.exists():
+              raise SystemExit(0)
+
+          text = alert_path.read_text(encoding="utf-8").strip()
+          if not text:
+              raise SystemExit(0)
+
+          url = f"https://api.telegram.org/bot{token}/sendMessage"
+          r = requests.post(url, data={
+              "chat_id": chat_id,
+              "text": text,
+              "disable_web_page_preview": "true"
+          }, timeout=30)
+          if r.status_code >= 300:
+              raise SystemExit(f"Telegram alerts failed: {r.status_code} {r.text[:200]}")
+          PY
 
       - name: Notify Telegram (failure)
         if: failure()
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
-          DATE=$(date '+%d.%m.%Y')
-          TIME=$(date '+%H:%M:%S МСК')
+          python - <<'PY'
+          import os
+          import requests
 
-          TEXT="🧩 KVAS • GitHub Actions
-━━━━━━━━━━━━━━━━━━
-🔴 ПРИОРИТЕТ: ВЫСОКИЙ
-🚨 Сборка завершена с ошибками
+          token = os.environ.get("TG_BOT_TOKEN")
+          chat_id = os.environ.get("TG_CHAT_ID")
 
-🗓 ${DATE}
-🕒 ${TIME}
+          if not token or not chat_id:
+              raise SystemExit(0)
 
-⚠ Проверь Actions:
-https://github.com/${{ github.repository }}/actions"
-
-          curl -s -X POST https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage             -d chat_id=${{ secrets.TG_CHAT_ID }}             -d text="$TEXT"
+          url = f"https://api.telegram.org/bot{token}/sendMessage"
+          text = "📦 BUILD SYSTEM\n🔴 GitHub Actions\n━━━━━━━━━━━━━━━━━━\n🚨 CRITICAL\n\n❌ Workflow упал до формирования отчёта.\n\n🔗 Actions: https://github.com/${{ github.repository }}/actions"
+          requests.post(url, data={"chat_id": chat_id, "text": text, "disable_web_page_preview": "true"}, timeout=30)
+          PY
