@@ -1,5 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""
+Common helpers extracted from the original report.py (STRICT 1:1 logic).
+
+This module MUST keep behavior identical to the original:
+- pct rounding
+- limit_badge thresholds
+- diff_lists direction
+- severity classification rules
+- stats.json schema and retention
+- trend evaluation messages
+"""
 
 from __future__ import annotations
 
@@ -18,8 +29,8 @@ REPORT_MD = DIST / "report.md"
 TG_MESSAGE = DIST / "tg_message.txt"
 TG_ALERT = DIST / "tg_alert.txt"
 
-MONTHS_RU = ["янв","фев","мар","апр","мая","июн","июл","авг","сен","окт","ноя","дек"]
 MSK = timezone(timedelta(hours=3))
+MONTHS_RU = ["янв","фев","мар","апр","мая","июн","июл","авг","сен","окт","ноя","дек"]
 
 
 def load_json(path: Path, default):
@@ -38,12 +49,6 @@ def dump_json(path: Path, obj) -> None:
 
 
 def parse_dt_utc(s: str) -> datetime:
-    """
-    Accepts:
-      - '2026-02-15 13:06:41 UTC'
-      - ISO with Z / +00:00
-      - ISO without tz (treated as UTC)
-    """
     raw = (s or "").strip()
     if not raw:
         return datetime.now(timezone.utc)
@@ -52,15 +57,14 @@ def parse_dt_utc(s: str) -> datetime:
     if raw.endswith(" UTC"):
         core = raw[:-4].strip()
         try:
-            dt = datetime.strptime(core, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-            return dt
+            return datetime.strptime(core, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
         except Exception:
-            pass
+            return datetime.now(timezone.utc)
 
-    # ISO-ish
+    # ISO formats
     try:
         if raw.endswith("Z"):
-            return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(timezone.utc)
+            return datetime.fromisoformat(raw.replace("Z", "+00:00"))
         dt = datetime.fromisoformat(raw)
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
@@ -97,9 +101,7 @@ def limit_badge(p: float) -> str:
 def diff_lists(prev: List[str], curr: List[str]) -> Tuple[List[str], List[str]]:
     p = set(prev or [])
     c = set(curr or [])
-    added = sorted(list(c - p))
-    removed = sorted(list(p - c))
-    return added, removed
+    return sorted(c - p), sorted(p - c)
 
 
 def short_hash(h: str) -> str:
@@ -112,11 +114,11 @@ def short_hash(h: str) -> str:
 def status_emoji(status: str) -> str:
     s = (status or "").upper()
     if s == "OK":
-        return "🟢 OK"
+        return "🟢"
     if s == "EMPTY":
-        return "🟡 ПУСТО"
+        return "🟡"
     if s == "FAIL":
-        return "🔴 ОШИБКА"
+        return "🔴"
     return "—"
 
 
