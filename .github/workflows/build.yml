@@ -22,9 +22,10 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Run builder
+      - name: Run builder + report
         run: |
           python src/build.py
+          python src/report.py
 
       - name: Commit dist
         run: |
