@@ -5,6 +5,9 @@ on:
   schedule:
     - cron: "0 */6 * * *"
 
+# IMPORTANT:
+# To allow "git push" from Actions, repo settings must allow write access for GITHUB_TOKEN:
+# Settings → Actions → General → Workflow permissions → Read and write permissions
 permissions:
   contents: write
 
@@ -15,6 +18,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -27,11 +33,15 @@ jobs:
           python src/report.py
 
       - name: Commit dist
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add dist/
           git diff --cached --quiet || git commit -m "Update domain lists"
+          # Ensure authenticated remote (works with GITHUB_TOKEN when write permissions are enabled)
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push
 
       - name: Notify Telegram (report)
@@ -40,34 +50,18 @@ jobs:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
-          python - <<'PY'
-          import os
-          import pathlib
-          import requests
+          if [ -z "${TG_BOT_TOKEN}" ] || [ -z "${TG_CHAT_ID}" ]; then
+            echo "TG_BOT_TOKEN/TG_CHAT_ID not set; skip"
+            exit 0
+          fi
+          if [ ! -s "dist/tg_message.txt" ]; then
+            echo "dist/tg_message.txt missing/empty; skip"
+            exit 0
+          fi
 
-          token = os.environ.get("TG_BOT_TOKEN")
-          chat_id = os.environ.get("TG_CHAT_ID")
+          TEXT="$(cat dist/tg_message.txt)"
 
-          if not token or not chat_id:
-              raise SystemExit("TG_BOT_TOKEN/TG_CHAT_ID not set")
-
-          msg_path = pathlib.Path("dist/tg_message.txt")
-          if not msg_path.exists():
-              raise SystemExit("dist/tg_message.txt missing")
-
-          text = msg_path.read_text(encoding="utf-8").strip()
-          if not text:
-              raise SystemExit("dist/tg_message.txt empty")
-
-          url = f"https://api.telegram.org/bot{token}/sendMessage"
-          r = requests.post(url, data={
-              "chat_id": chat_id,
-              "text": text,
-              "disable_web_page_preview": "true"
-          }, timeout=30)
-          if r.status_code >= 300:
-              raise SystemExit(f"Telegram sendMessage failed: {r.status_code} {r.text[:200]}")
-          PY
+          curl -sS -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage"             -d "chat_id=${TG_CHAT_ID}"             --data-urlencode "text=${TEXT}"             -d "disable_web_page_preview=true" >/dev/null
 
       - name: Notify Telegram (alerts)
         if: always()
@@ -75,34 +69,16 @@ jobs:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
-          python - <<'PY'
-          import os
-          import pathlib
-          import requests
+          if [ -z "${TG_BOT_TOKEN}" ] || [ -z "${TG_CHAT_ID}" ]; then
+            exit 0
+          fi
+          if [ ! -s "dist/tg_alert.txt" ]; then
+            exit 0
+          fi
 
-          token = os.environ.get("TG_BOT_TOKEN")
-          chat_id = os.environ.get("TG_CHAT_ID")
+          TEXT="$(cat dist/tg_alert.txt)"
 
-          if not token or not chat_id:
-              raise SystemExit(0)
-
-          alert_path = pathlib.Path("dist/tg_alert.txt")
-          if not alert_path.exists():
-              raise SystemExit(0)
-
-          text = alert_path.read_text(encoding="utf-8").strip()
-          if not text:
-              raise SystemExit(0)
-
-          url = f"https://api.telegram.org/bot{token}/sendMessage"
-          r = requests.post(url, data={
-              "chat_id": chat_id,
-              "text": text,
-              "disable_web_page_preview": "true"
-          }, timeout=30)
-          if r.status_code >= 300:
-              raise SystemExit(f"Telegram alerts failed: {r.status_code} {r.text[:200]}")
-          PY
+          curl -sS -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage"             -d "chat_id=${TG_CHAT_ID}"             --data-urlencode "text=${TEXT}"             -d "disable_web_page_preview=true" >/dev/null
 
       - name: Notify Telegram (failure)
         if: failure()
@@ -110,17 +86,18 @@ jobs:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
-          python - <<'PY'
-          import os
-          import requests
+          if [ -z "${TG_BOT_TOKEN}" ] || [ -z "${TG_CHAT_ID}" ]; then
+            exit 0
+          fi
 
-          token = os.environ.get("TG_BOT_TOKEN")
-          chat_id = os.environ.get("TG_CHAT_ID")
+          TEXT="📦 BUILD SYSTEM
+🔴 GitHub Actions
+━━━━━━━━━━━━━━━━━━
+🚨 CRITICAL
 
-          if not token or not chat_id:
-              raise SystemExit(0)
+❌ Workflow упал до формирования отчёта.
 
-          url = f"https://api.telegram.org/bot{token}/sendMessage"
-          text = "📦 BUILD SYSTEM\n🔴 GitHub Actions\n━━━━━━━━━━━━━━━━━━\n🚨 CRITICAL\n\n❌ Workflow упал до формирования отчёта.\n\n🔗 Actions: https://github.com/${{ github.repository }}/actions"
-          requests.post(url, data={"chat_id": chat_id, "text": text, "disable_web_page_preview": "true"}, timeout=30)
-          PY
+🔗 Actions:
+https://github.com/${GITHUB_REPOSITORY}/actions"
+
+          curl -sS -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage"             -d "chat_id=${TG_CHAT_ID}"             --data-urlencode "text=${TEXT}"             -d "disable_web_page_preview=true" >/dev/null
