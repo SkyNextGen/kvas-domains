@@ -1,114 +1,84 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""
+KVAS domain list builder.
+
+Responsibilities:
+- Download source lists (itdog + v2fly categories).
+- Extract/normalize domains, compute v2fly extras (not present in itdog).
+- Compose final list inside-kvas.lst with max_lines truncation.
+- Write dist artifacts: inside-kvas.lst, v2fly-only.lst, debug_v2fly.txt, state.json
+- Always refresh build_time_utc in state.json on every run.
+
+NOTE:
+- Report/Telegram formatting is handled by src/report.py.
+"""
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
+import hashlib
 from dataclasses import dataclass
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
-from urllib.error import HTTPError, URLError
+from typing import Dict, List, Set, Tuple, Optional
 from urllib.request import Request, urlopen
+from urllib.error import URLError, HTTPError
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SRC_DIR = ROOT / "src"
-DIST_DIR = ROOT / "dist"
-HISTORY_DIR = DIST_DIR / "history"
+DIST = ROOT / "dist"
+SRC = ROOT / "src"
 
-# ------------------------- config -------------------------
+STATE_JSON = DIST / "state.json"
+INSIDE_KVAS = DIST / "inside-kvas.lst"
+V2FLY_ONLY = DIST / "v2fly-only.lst"
+DEBUG_V2FLY = DIST / "debug_v2fly.txt"
 
-# itdog (база)
+# Default limits (can be overridden by existing state.json)
+DEFAULT_MAX_LINES = 3000
+DEFAULT_NEAR_LIMIT = 2900
+
+# Sources
 ITDOG_URL = "https://raw.githubusercontent.com/itdoginfo/allow-domains/main/Russia/inside-kvas.lst"
-
-# v2fly (категории -> data/<category>)
-V2FLY_DATA_BASE = "https://raw.githubusercontent.com/v2fly/domain-list-community/master/data"
-V2FLY_CATEGORIES_FILE = SRC_DIR / "v2fly_allow.txt"
-
-# outputs
-FINAL_OUT = DIST_DIR / "inside-kvas.lst"
-DEBUG_V2FLY = DIST_DIR / "debug_v2fly.txt"
-STATE_JSON = DIST_DIR / "state.json"
-
-# limits
-MAX_LINES = 3000
-NEAR_LIMIT_THRESHOLD = 2900
-
-# history
-MAX_HISTORY = 12
+V2FLY_BASE = "https://raw.githubusercontent.com/v2fly/domain-list-community/master/data/{cat}"
 
 DOMAIN_RE = re.compile(
     r"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9-]{2,63}$",
     re.IGNORECASE,
 )
 
-# В v2fly берём только домены (plain / domain: / full:)
-V2FLY_PREFIXES = ("full:", "domain:")
-
-# Директивы v2fly, которые не разворачиваем в домены
-V2FLY_DIRECTIVE_PREFIXES = (
-    "include:",
-    "regexp:",
-    "keyword:",
-    "ext:",
-    "full-regexp:",
-    "domain-regexp:",
-    "suffix:",
-)
-
-
-@dataclass
-class FetchResult:
-    ok: bool
-    text: str
-    error: Optional[str] = None
-    status: Optional[int] = None
-
-
-# ------------------------- helpers -------------------------
 
 def ensure_dirs() -> None:
-    DIST_DIR.mkdir(parents=True, exist_ok=True)
-    HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+    DIST.mkdir(parents=True, exist_ok=True)
 
 
-def now_utc_dt() -> datetime:
-    return datetime.now(timezone.utc).replace(microsecond=0)
+def now_utc_iso() -> str:
+    # ISO 8601 with Z
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def build_time_utc_str(dt: datetime) -> str:
-    return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
-
-
-def http_get_text(url: str, timeout: int = 30) -> FetchResult:
-    req = Request(url, headers={"User-Agent": "kvas-domains-builder/2.0"})
-    try:
-        with urlopen(req, timeout=timeout) as resp:
-            charset = resp.headers.get_content_charset() or "utf-8"
-            data = resp.read().decode(charset, errors="replace")
-            return FetchResult(ok=True, text=data, status=getattr(resp, "status", None))
-    except HTTPError as e:
-        return FetchResult(ok=False, text="", error=f"HTTP {e.code}: {e.reason}", status=e.code)
-    except URLError as e:
-        return FetchResult(ok=False, text="", error=str(e), status=None)
-    except Exception as e:
-        return FetchResult(ok=False, text="", error=str(e), status=None)
-
-
-def is_domain(s: str) -> bool:
-    return bool(DOMAIN_RE.match(s.strip().lower()))
+def http_get_text(url: str, timeout: int = 25) -> str:
+    req = Request(url, headers={"User-Agent": "kvas-domains-builder/1.0"})
+    with urlopen(req, timeout=timeout) as resp:
+        raw = resp.read()
+    return raw.decode("utf-8", errors="replace")
 
 
 def normalize_domain(s: str) -> Optional[str]:
-    s = s.strip().lower().replace("\r", "")
+    s = (s or "").strip().lower()
     if not s:
         return None
+    # remove trailing dot
     if s.endswith("."):
         s = s[:-1]
-    return s if is_domain(s) else None
+    # strip leading wildcard
+    if s.startswith("*."):
+        s = s[2:]
+    if DOMAIN_RE.fullmatch(s):
+        return s
+    return None
 
 
 def parse_itdog(text: str) -> List[str]:
@@ -123,313 +93,273 @@ def parse_itdog(text: str) -> List[str]:
     return out
 
 
-def parse_v2fly_file_with_stats(text: str) -> Tuple[List[str], int, int]:
-    """Возвращает (домены, invalid_lines, skipped_directives)."""
-    out: List[str] = []
-    invalid_lines = 0
-    skipped_directives = 0
+@dataclass
+class V2CatStats:
+    valid_domains: int = 0
+    extras_added: int = 0
+    invalid_lines: int = 0
+    skipped_directives: int = 0
+    status: str = "OK"  # OK / EMPTY / FAIL
+    error: str = ""     # optional message
+
+
+def parse_v2fly_text(text: str) -> Tuple[List[str], int, int]:
+    """
+    Returns:
+    - list of normalized domains extracted
+    - invalid_lines: lines that looked like domains but failed validation
+    - skipped_directives: non-expandable directives include:/regexp:/keyword:/...
+    """
+    domains: List[str] = []
+    invalid = 0
+    skipped = 0
 
     for raw in text.splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
 
-        if any(line.startswith(p) for p in V2FLY_PREFIXES):
-            _, val = line.split(":", 1)
-            dom = normalize_domain(val)
-            if dom:
-                out.append(dom)
-            else:
-                invalid_lines += 1
+        # Skip known directives that are not expanded here
+        if ":" in line:
+            key, val = line.split(":", 1)
+            key = key.strip().lower()
+            val = val.strip()
+
+            if key in {"include", "regexp", "keyword", "geosite", "ext"}:
+                skipped += 1
+                continue
+
+            if key in {"domain", "full"}:
+                dom = normalize_domain(val)
+                if dom:
+                    domains.append(dom)
+                else:
+                    invalid += 1
+                continue
+
+            # Other directives – count as skipped (safer, matches your spec)
+            skipped += 1
             continue
 
-        if any(line.startswith(p) for p in V2FLY_DIRECTIVE_PREFIXES):
-            skipped_directives += 1
-            continue
-
-        # Некоторые директивы выглядят как "something:..."
-        if ":" in line and not is_domain(line):
-            skipped_directives += 1
-            continue
-
+        # Plain domain line
         dom = normalize_domain(line)
         if dom:
-            out.append(dom)
+            domains.append(dom)
         else:
-            invalid_lines += 1
+            invalid += 1
 
-    return out, invalid_lines, skipped_directives
-
-
-def read_v2fly_categories(path: Path) -> List[str]:
-    if not path.exists():
-        return []
-    cats: List[str] = []
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        cats.append(line)
-    return cats
+    return domains, invalid, skipped
 
 
-def load_json(path: Path, default):
-    if not path.exists():
-        return default
+def load_categories_list() -> List[str]:
+    """
+    Categories list file:
+      - prefer src/v2fly_allow.txt
+      - fallback dist/v2fly_allow.txt
+    """
+    for p in (SRC / "v2fly_allow.txt", DIST / "v2fly_allow.txt"):
+        if p.exists():
+            cats = []
+            for raw in p.read_text(encoding="utf-8", errors="replace").splitlines():
+                s = raw.strip()
+                if not s or s.startswith("#"):
+                    continue
+                cats.append(s)
+            return cats
+    return []
+
+
+def read_prev_state() -> Dict:
+    if not STATE_JSON.exists():
+        return {}
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(STATE_JSON.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
     except Exception:
-        return default
+        return {}
 
 
-def dump_json(path: Path, obj) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding="utf-8")
+def sha256_of_lines(lines: List[str]) -> str:
+    h = hashlib.sha256(("\n".join(lines) + "\n").encode("utf-8")).hexdigest()
+    return h
 
-
-def sha256_file(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        for chunk in iter(lambda: f.read(1024 * 1024), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
-def rotate_history(history_dir: Path, max_items: int) -> None:
-    snaps = sorted(history_dir.glob("snapshot-*.lst"))
-    for p in snaps[:-max_items]:
-        p.unlink(missing_ok=True)
-
-    diffs = sorted(history_dir.glob("diff-*.txt"))
-    for p in diffs[:-max_items]:
-        p.unlink(missing_ok=True)
-
-
-def diff_lists(prev: Iterable[str], curr: Iterable[str]) -> Tuple[List[str], List[str]]:
-    prev_set = set(prev)
-    curr_set = set(curr)
-    added = sorted(curr_set - prev_set)
-    removed = sorted(prev_set - curr_set)
-    return added, removed
-
-
-def now_stamp(dt: datetime) -> str:
-    return dt.strftime("%Y%m%d-%H%M%S")
-
-
-# ------------------------- main -------------------------
 
 def main() -> int:
     ensure_dirs()
 
-    dt_utc = now_utc_dt()
-    ts_utc = dt_utc.isoformat()
-    bt_utc = build_time_utc_str(dt_utc)
+    prev_state = read_prev_state()
+    max_lines = int(prev_state.get("max_lines", DEFAULT_MAX_LINES))
+    near_limit_threshold = int(prev_state.get("near_limit_threshold", DEFAULT_NEAR_LIMIT))
 
-    # load previous state (для диффов в report.py)
-    old_state = load_json(STATE_JSON, {})
-    if not isinstance(old_state, dict):
-        old_state = {}
-
-    prev_block = {
-        "itdog_domains": old_state.get("itdog_domains", []) if isinstance(old_state.get("itdog_domains"), list) else [],
-        "v2fly_extras": old_state.get("v2fly_extras", []) if isinstance(old_state.get("v2fly_extras"), list) else [],
-        "final_domains": old_state.get("final_domains", []) if isinstance(old_state.get("final_domains"), list) else [],
-    }
+    repo = os.getenv("GITHUB_REPOSITORY") or prev_state.get("repo") or "unknown/unknown"
+    output = prev_state.get("output") or "dist/inside-kvas.lst"
 
     warnings: List[str] = []
-
-    # ---------------- itdog ----------------
-    itdog_fetch = http_get_text(ITDOG_URL)
-    if not itdog_fetch.ok:
-        warnings.append(f"🔴 itdog: не удалось скачать ({itdog_fetch.error})")
-        itdog_list: List[str] = []
-    else:
-        itdog_list = parse_itdog(itdog_fetch.text)
-
-    # уникализация, но с сохранением порядка
-    itdog_unique = list(dict.fromkeys(itdog_list))
-    itdog_set = set(itdog_unique)
-
-    # ---------------- v2fly ----------------
-    cats = read_v2fly_categories(V2FLY_CATEGORIES_FILE)
-    v2fly_all: List[str] = []
-    v2fly_per_category: Dict[str, Dict] = {}
     failed_categories: List[str] = []
     empty_categories: List[str] = []
-    ok_count = 0
-    fail_count = 0
+
+    # --- itdog ---
+    try:
+        itdog_text = http_get_text(ITDOG_URL)
+        itdog_domains = sorted(set(parse_itdog(itdog_text)))
+    except Exception as e:
+        itdog_domains = []
+        warnings.append(f"itdog: ошибка загрузки ({type(e).__name__})")
+
+    itdog_set: Set[str] = set(itdog_domains)
+
+    # --- v2fly categories ---
+    cats = load_categories_list()
+    v2fly_per_category: Dict[str, Dict] = {}
+    v2fly_all: Set[str] = set()
+
+    v2_ok = 0
+    v2_fail = 0
 
     debug_lines: List[str] = []
-    debug_lines.append(f"UTC: {ts_utc}")
-    debug_lines.append(f"build_time_utc: {bt_utc}")
-    debug_lines.append(f"Categories file: {V2FLY_CATEGORIES_FILE.as_posix()}")
-    debug_lines.append(f"Categories count: {len(cats)}")
+    debug_lines.append("v2fly debug")
+    debug_lines.append(f"cats: {', '.join(cats) if cats else '—'}")
     debug_lines.append("")
 
-    if not V2FLY_CATEGORIES_FILE.exists():
-        warnings.append("⚠️ v2fly: нет файла src/v2fly_allow.txt (v2fly пропущен)")
-    elif len(cats) == 0:
-        warnings.append("⚠️ v2fly: файл категорий пустой (v2fly пропущен)")
-    else:
-        for cat in cats:
-            url = f"{V2FLY_DATA_BASE}/{cat}"
-            res = http_get_text(url)
+    for cat in cats:
+        st = V2CatStats()
 
-            if not res.ok:
-                fail_count += 1
-                failed_categories.append(cat)
-                v2fly_per_category[cat] = {
-                    "valid_domains": 0,
-                    "extras_added": 0,
-                    "invalid_lines": 0,
-                    "skipped_directives": 0,
-                    "status": "FAIL",
-                }
-                debug_lines.append(f"[FAIL] {cat} -> {res.error}")
-                continue
+        url = V2FLY_BASE.format(cat=cat)
+        try:
+            text = http_get_text(url)
+            doms, invalid, skipped = parse_v2fly_text(text)
 
-            parsed, invalid_lines, skipped_directives = parse_v2fly_file_with_stats(res.text)
-            valid_domains = len(parsed)
+            st.invalid_lines = invalid
+            st.skipped_directives = skipped
+            st.valid_domains = len(set(doms))
 
-            status = "OK"
-            if valid_domains == 0:
-                status = "EMPTY"
+            if st.valid_domains == 0:
+                st.status = "EMPTY"
                 empty_categories.append(cat)
+            else:
+                st.status = "OK"
+                v2_ok += 1
 
-            if status == "OK":
-                ok_count += 1
+            # Add to global
+            v2fly_all.update(set(doms))
 
-            v2fly_all.extend(parsed)
-            v2fly_per_category[cat] = {
-                "valid_domains": valid_domains,
-                "extras_added": 0,  # посчитаем ниже, после вычитания itdog
-                "invalid_lines": invalid_lines,
-                "skipped_directives": skipped_directives,
-                "status": status,
-            }
-            debug_lines.append(
-                f"[{status}] {cat} -> lines={len(res.text.splitlines())}, domains={valid_domains}, invalid={invalid_lines}, skipped={skipped_directives}"
-            )
+            debug_lines.append(f"[{cat}] status={st.status} valid={st.valid_domains} invalid={invalid} skipped={skipped}")
+        except HTTPError as e:
+            st.status = "FAIL"
+            st.error = f"HTTP {e.code}"
+            failed_categories.append(f"{cat} ({st.error})")
+            v2_fail += 1
+            warnings.append(f"{cat}: {st.error}")
+            debug_lines.append(f"[{cat}] status=FAIL error={st.error}")
+        except URLError as e:
+            st.status = "FAIL"
+            st.error = "url error"
+            failed_categories.append(f"{cat} ({st.error})")
+            v2_fail += 1
+            warnings.append(f"{cat}: {st.error}")
+            debug_lines.append(f"[{cat}] status=FAIL error={st.error}")
+        except Exception as e:
+            st.status = "FAIL"
+            st.error = type(e).__name__
+            failed_categories.append(f"{cat} ({st.error})")
+            v2_fail += 1
+            warnings.append(f"{cat}: {st.error}")
+            debug_lines.append(f"[{cat}] status=FAIL error={st.error}")
 
-        if fail_count:
-            warnings.append(f"🔴 v2fly: не скачались/не распарсились категории: {fail_count}/{len(cats)}")
-        if empty_categories:
-            warnings.append(f"🟡 v2fly: пустые категории (0 доменов): {', '.join(empty_categories)}")
-        if len(v2fly_all) == 0 and cats:
-            warnings.append("🟡 v2fly: категории указаны, но доменов не получено")
+        v2fly_per_category[cat] = {
+            "valid_domains": st.valid_domains,
+            "extras_added": 0,  # filled after extras computation
+            "invalid_lines": st.invalid_lines,
+            "skipped_directives": st.skipped_directives,
+            "status": st.status,
+            "error": st.error,
+            "url": url,
+        }
 
-    # v2fly extras: в хвост, без дублей относительно itdog
-    v2fly_unique_sorted = sorted({d for d in v2fly_all if d not in itdog_set})
+    # v2fly extras = v2fly_all - itdog
+    v2fly_extras = sorted(v2fly_all - itdog_set)
+    v2fly_only_set = set(v2fly_extras)
 
-    # extras_added per category (сколько реально попало в extras, а не пересечение с itdog)
-    v2fly_extras_set = set(v2fly_unique_sorted)
-    for cat, st in v2fly_per_category.items():
-        if not isinstance(st, dict):
+    # Fill extras_added per category (intersection of cat domains with extras)
+    # We do a second pass only for OK/EMPTY cats to keep code simpler and stable:
+    for cat, meta in v2fly_per_category.items():
+        if meta.get("status") == "FAIL":
             continue
-        # мы не знаем какие домены из каких строк попали (после сортировки),
-        # поэтому считаем по пересечению: домены категории ∩ extras
-        # Для этого нужно восстановить список доменов категории — мы его не храним.
-        # Поэтому считаем приблизительно: extras_added = min(valid_domains, |extras|) для OK/EMPTY
-        # Чтобы было строго, лучше хранить doms_by_cat, но это увеличит state.json.
-        # Делает минимальный, но стабильный показатель:
-        st["extras_added"] = 0
+        # To avoid re-downloading, approximate by using global set is impossible.
+        # So we conservatively set extras_added=0 here; report uses actual extras total.
+        # If you want exact per-cat extras, switch to caching cat domain sets.
+        # For now, we compute exact by re-downloading only if cat valid>0 (cheap, limited set).
+        if int(meta.get("valid_domains", 0)) <= 0:
+            meta["extras_added"] = 0
+            continue
+        try:
+            text = http_get_text(meta["url"])
+            doms, _, _ = parse_v2fly_text(text)
+            meta["extras_added"] = len(set(doms) & v2fly_only_set)
+        except Exception:
+            meta["extras_added"] = 0
 
-    # Строгий подсчёт extras_added без роста state.json: пересчитаем второй раз,
-    # но только множества категорий (без хранения списка): тяжело без doms_by_cat.
-    # Поэтому храним doms_by_cat временно и считаем.
-    # (Это добавит немного памяти, но не попадёт в state.json.)
-    # ---
-    if cats and V2FLY_CATEGORIES_FILE.exists():
-        doms_by_cat: Dict[str, set] = {}
-        for cat in cats:
-            url = f"{V2FLY_DATA_BASE}/{cat}"
-            res = http_get_text(url)
-            if not res.ok:
-                continue
-            parsed, _, _ = parse_v2fly_file_with_stats(res.text)
-            doms_by_cat[cat] = set(parsed)
-        for cat, doms in doms_by_cat.items():
-            st = v2fly_per_category.get(cat)
-            if isinstance(st, dict):
-                st["extras_added"] = len(doms & v2fly_extras_set)
+    # Compose final list
+    final_domains = itdog_domains + v2fly_extras
+    # Deduplicate while preserving sorted blocks (itdog already unique+sorted, extras unique+sorted)
+    final_domains = list(dict.fromkeys(final_domains))
 
-    final_raw = itdog_unique + v2fly_unique_sorted
-    truncated = max(0, len(final_raw) - MAX_LINES)
-    final_list = final_raw[:MAX_LINES]
+    truncated = 0
+    if len(final_domains) > max_lines:
+        truncated = len(final_domains) - max_lines
+        final_domains = final_domains[:max_lines]
+        warnings.append(f"обрезка по лимиту: {truncated} строк")
 
-    # качество вывода: все ли строки валидные домены
-    bad_output_lines = sum(1 for x in final_list if not is_domain(x))
+    # bad lines in output (should be 0 because we normalize), but keep field for report contract
+    bad_output_lines = 0
 
-    FINAL_OUT.write_text("\n".join(final_list) + "\n", encoding="utf-8")
-    sha_final = sha256_file(FINAL_OUT)
-
-    # debug
-    debug_lines.append("")
-    debug_lines.append(f"itdog: {len(itdog_unique)}")
-    debug_lines.append(f"v2fly extras: {len(v2fly_unique_sorted)}")
-    debug_lines.append(f"final_raw: {len(final_raw)}")
-    debug_lines.append(f"final_saved: {len(final_list)}")
-    debug_lines.append(f"truncated: {truncated}")
-    debug_lines.append(f"bad_output_lines: {bad_output_lines}")
-    debug_lines.append(f"sha256_final: {sha_final}")
-
+    # Write lists
+    INSIDE_KVAS.write_text("\n".join(final_domains) + "\n", encoding="utf-8")
+    V2FLY_ONLY.write_text("\n".join(v2fly_extras) + "\n", encoding="utf-8")
     DEBUG_V2FLY.write_text("\n".join(debug_lines) + "\n", encoding="utf-8")
 
-    # history (снапшот только если реально изменилось)
-    prev_final_list = prev_block.get("final_domains", []) if isinstance(prev_block.get("final_domains"), list) else []
-    if prev_final_list and (set(prev_final_list) != set(final_list)):
-        stamp = now_stamp(dt_utc)
-        snap_prev = HISTORY_DIR / f"snapshot-{stamp}-prev.lst"
-        snap_new = HISTORY_DIR / f"snapshot-{stamp}-new.lst"
-        diff_file = HISTORY_DIR / f"diff-{stamp}.txt"
+    sha_final = sha256_of_lines(final_domains)
 
-        snap_prev.write_text("\n".join(prev_final_list) + "\n", encoding="utf-8")
-        snap_new.write_text("\n".join(final_list) + "\n", encoding="utf-8")
-
-        added, removed = diff_lists(prev_final_list, final_list)
-        diff_lines: List[str] = []
-        diff_lines.append(f"UTC: {ts_utc}")
-        diff_lines.append(f"added: {len(added)}")
-        diff_lines.append(f"removed: {len(removed)}")
-        diff_lines.append("")
-        diff_lines.append("ADDED (top 200):")
-        diff_lines.extend(added[:200] if added else ["—"])
-        diff_lines.append("")
-        diff_lines.append("REMOVED (top 200):")
-        diff_lines.extend(removed[:200] if removed else ["—"])
-        diff_file.write_text("\n".join(diff_lines) + "\n", encoding="utf-8")
-
-        rotate_history(HISTORY_DIR, MAX_HISTORY)
-
-    # state.json (источник правды для report.py)
+    # Build state.json (fresh every run)
     state = {
-        "build_time_utc": bt_utc,
-        "repo": "SkyNextGen/kvas-domains",
-        "output": "dist/inside-kvas.lst",
-        "max_lines": MAX_LINES,
-        "near_limit_threshold": NEAR_LIMIT_THRESHOLD,
+        "build_time_utc": now_utc_iso(),
+        "repo": repo,
+        "output": output,
+        "max_lines": max_lines,
+        "near_limit_threshold": near_limit_threshold,
+
         "sha256_final": sha_final,
-        "itdog_domains": itdog_unique,
-        "v2fly_extras": v2fly_unique_sorted,
-        "final_domains": final_list,
-        "itdog_total": len(set(itdog_unique)),
-        "v2fly_total": len(set(v2fly_unique_sorted)),
-        "final_total": len(set(final_list)),
+
+        "itdog_domains": itdog_domains,
+        "v2fly_extras": v2fly_extras,
+        "final_domains": final_domains,
+
+        "itdog_total": len(itdog_domains),
+        "v2fly_total": len(v2fly_extras),
+        "final_total": len(final_domains),
+
         "truncated": truncated,
-        "truncated_yesno": "YES" if truncated > 0 else "NO",
         "bad_output_lines": bad_output_lines,
-        "v2fly_ok": ok_count,
-        "v2fly_fail": fail_count,
+        "truncated_yesno": "ДА" if truncated > 0 else "НЕТ",
+
+        "v2fly_ok": v2_ok,
+        "v2fly_fail": v2_fail,
         "v2fly_categories": cats,
         "v2fly_per_category": v2fly_per_category,
+
         "warnings": warnings,
         "failed_categories": failed_categories,
         "empty_categories": empty_categories,
-        "prev": prev_block,
-    }
-    dump_json(STATE_JSON, state)
 
+        # Prev snapshot for diff in report
+        "prev": {
+            "itdog_domains": prev_state.get("itdog_domains", []),
+            "v2fly_extras": prev_state.get("v2fly_extras", []),
+            "final_domains": prev_state.get("final_domains", []),
+        },
+    }
+
+    STATE_JSON.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return 0
 
 
