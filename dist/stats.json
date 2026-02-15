@@ -131,5 +131,19 @@
     "ts_utc": "2026-02-15T16:50:37Z",
     "total": 1830,
     "severity": "ОК"
+  },
+  {
+    "build_time_utc": "2026-02-15T17:53:04Z",
+    "final_total": 1830,
+    "itdog_total": 1123,
+    "v2fly_total": 707,
+    "truncated": 0,
+    "bad_output_lines": 0,
+    "v2fly_ok": 10,
+    "v2fly_fail": 0,
+    "warnings": [],
+    "failed_categories": [],
+    "empty_categories": [],
+    "sha256_final": "d5e80052d09333376bc6a502fa6edb51e25809501b44e2be2f706d6accab7108"
   }
 ]
