@@ -1,51 +1,50 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-KVAS report + Telegram message generator.
+KVAS report + Telegram generator (visual redesign).
 
 Inputs:
-- dist/state.json (produced by src/build.py)
-- dist/stats.json (history; appended here)
+- dist/state.json   (produced by src/build.py)
+- dist/stats.json   (run history, appended here)
 
 Outputs:
-- dist/report.md
+- dist/report.md    (regenerated every run)
 - dist/tg_message.txt
-- dist/tg_alert.txt (only when WARNING/ERROR; otherwise deleted)
+- dist/tg_alert.txt (only if WARNING/ERROR; removed when OK)
 
-Guarantees:
-- from __future__ import annotations is at the top (no syntax traps)
-- report.md is regenerated every run
-- Telegram follows approved templates (ERROR / WARNING / OK)
+Notes:
+- Uses GitHub Markdown typography: # / ## / ### plus quotes and <details>.
+- Telegram follows approved templates (OK / WARNING / ERROR) + report link.
 """
 
 from __future__ import annotations
 
 import json
-import hashlib
-from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
-
+from typing import Dict, List, Optional, Tuple
 
 ROOT = Path(__file__).resolve().parents[1]
 DIST = ROOT / "dist"
 
 STATE_JSON = DIST / "state.json"
+STATS_JSON = DIST / "stats.json"
 REPORT_MD = DIST / "report.md"
 TG_MESSAGE = DIST / "tg_message.txt"
 TG_ALERT = DIST / "tg_alert.txt"
-STATS_JSON = DIST / "stats.json"
 
 MSK = timezone(timedelta(hours=3))
 MONTHS_RU = ["янв","фев","мар","апр","мая","июн","июл","авг","сен","окт","ноя","дек"]
 
 
+# ---------------- helpers ----------------
+
 def load_json(path: Path, default):
     try:
         if not path.exists():
             return default
-        return json.loads(path.read_text(encoding="utf-8"))
+        obj = json.loads(path.read_text(encoding="utf-8"))
+        return obj
     except Exception:
         return default
 
@@ -55,37 +54,47 @@ def dump_json(path: Path, obj) -> None:
     path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def fmt_build_time_msk(build_time_utc: str) -> str:
-    # build_time_utc is ISO Z
+def parse_dt_utc(s: str) -> datetime:
+    """
+    Accepts:
+      - '2026-02-15 13:06:41 UTC'
+      - ISO with Z / +00:00
+      - ISO without tz (treated as UTC)
+    """
+    raw = (s or "").strip()
+    if not raw:
+        return datetime.now(timezone.utc)
+
+    # 'YYYY-MM-DD HH:MM:SS UTC'
+    if raw.endswith(" UTC"):
+        core = raw[:-4].strip()
+        try:
+            dt = datetime.strptime(core, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+            return dt
+        except Exception:
+            pass
+
+    # ISO-ish
     try:
-        dt_utc = datetime.fromisoformat(build_time_utc.replace("Z", "+00:00")).astimezone(MSK)
+        if raw.endswith("Z"):
+            return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(timezone.utc)
+        dt = datetime.fromisoformat(raw)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
     except Exception:
-        dt_utc = datetime.now(timezone.utc).astimezone(MSK)
-    m = MONTHS_RU[dt_utc.month - 1]
-    return f"{dt_utc.day:02d} {m} {dt_utc.year}, {dt_utc:%H:%M} МСК"
+        return datetime.now(timezone.utc)
+
+
+def fmt_build_time_msk(build_time_utc: str) -> str:
+    dt_msk = parse_dt_utc(build_time_utc).astimezone(MSK)
+    m = MONTHS_RU[dt_msk.month - 1]
+    return f"{dt_msk.day:02d} {m} {dt_msk.year}, {dt_msk:%H:%M} МСК"
 
 
 def fmt_tg_date_time(build_time_utc: str) -> Tuple[str, str]:
-    try:
-        dt = datetime.fromisoformat(build_time_utc.replace("Z", "+00:00")).astimezone(MSK)
-    except Exception:
-        dt = datetime.now(timezone.utc).astimezone(MSK)
-    return dt.strftime("%d.%m.%Y"), dt.strftime("%H:%M:%S МСК")
-
-
-def diff_lists(prev: List[str], curr: List[str]) -> Tuple[List[str], List[str]]:
-    p = set(prev or [])
-    c = set(curr or [])
-    added = sorted(c - p)
-    removed = sorted(p - c)
-    return added, removed
-
-
-def short_hash(h: str) -> str:
-    h = (h or "").strip()
-    if len(h) < 10:
-        return h or "—"
-    return f"{h[:4]}…{h[-4:]}"
+    dt_msk = parse_dt_utc(build_time_utc).astimezone(MSK)
+    return dt_msk.strftime("%d.%m.%Y"), dt_msk.strftime("%H:%M:%S МСК")
 
 
 def pct(n: int, d: int) -> float:
@@ -102,10 +111,23 @@ def limit_badge(p: float) -> str:
     return "🟢"
 
 
+def diff_lists(prev: List[str], curr: List[str]) -> Tuple[List[str], List[str]]:
+    p = set(prev or [])
+    c = set(curr or [])
+    return sorted(c - p), sorted(p - c)
+
+
+def short_hash(h: str) -> str:
+    h = (h or "").strip()
+    if len(h) < 10:
+        return h or "—"
+    return f"{h[:4]}…{h[-4:]}"
+
+
 def status_emoji(status: str) -> str:
     s = (status or "").upper()
     if s == "OK":
-        return "🟢 ОК"
+        return "🟢 OK"
     if s == "EMPTY":
         return "🟡 ПУСТО"
     if s == "FAIL":
@@ -114,6 +136,9 @@ def status_emoji(status: str) -> str:
 
 
 def classify_severity(state: Dict) -> str:
+    """
+    Returns: 'ОК' / 'ПРЕДУПРЕЖДЕНИЕ' / 'ОШИБКА'
+    """
     max_lines = int(state.get("max_lines", 3000))
     threshold = int(state.get("near_limit_threshold", 2900))
     total = int(state.get("final_total", 0))
@@ -134,24 +159,15 @@ def classify_severity(state: Dict) -> str:
 
 
 def append_stats(state: Dict) -> Tuple[List[Dict], Optional[Dict]]:
-    """
-    Append stats record and return (stats_list, prev_record).
-    """
     stats = load_json(STATS_JSON, [])
     if not isinstance(stats, list):
         stats = []
-
     prev = stats[-1] if stats and isinstance(stats[-1], dict) else None
 
     rec = {
         "ts_utc": state.get("build_time_utc"),
         "total": int(state.get("final_total", 0)),
-        "itdog": int(state.get("itdog_total", 0)),
-        "v2fly": int(state.get("v2fly_total", 0)),
         "severity": classify_severity(state),
-        "warnings": state.get("warnings", []),
-        "failed_categories": state.get("failed_categories", []),
-        "empty_categories": state.get("empty_categories", []),
     }
     stats.append(rec)
     stats = stats[-400:]
@@ -159,25 +175,17 @@ def append_stats(state: Dict) -> Tuple[List[Dict], Optional[Dict]]:
     return stats, prev
 
 
-def trend_block(stats: List[Dict], prev: Optional[Dict], curr_total: int) -> Tuple[int, int, int, str]:
-    """
-    Returns: avg7, delta, deviation, eval_line
-    """
+def trend_eval(stats: List[Dict], prev_rec: Optional[Dict], curr_total: int) -> Tuple[int, int, int, str]:
     totals = [int(x.get("total", 0)) for x in stats[-7:] if isinstance(x, dict)]
-    if not totals:
-        avg7 = curr_total
-    else:
-        avg7 = int(round(sum(totals) / len(totals)))
+    avg7 = int(round(sum(totals) / len(totals))) if totals else curr_total
 
-    prev_total = int(prev.get("total", 0)) if isinstance(prev, dict) else None
+    prev_total = int(prev_rec.get("total", 0)) if isinstance(prev_rec, dict) else None
     delta = (curr_total - prev_total) if prev_total is not None else 0
     deviation = curr_total - avg7
 
-    # Eval line per approved wording
     if avg7 > 0 and curr_total >= avg7 * 2:
         eval_line = "📈 Рост (выше среднего ×2)"
     else:
-        # stable if abs deviation small relative to avg
         tol = max(10, int(round(avg7 * 0.01)))
         if abs(deviation) <= tol:
             eval_line = "➡ Стабильно"
@@ -189,10 +197,20 @@ def trend_block(stats: List[Dict], prev: Optional[Dict], curr_total: int) -> Tup
     return avg7, delta, deviation, eval_line
 
 
+def repo_report_url(repo: str) -> str:
+    r = (repo or "").strip()
+    if not r or "/" not in r:
+        return ""
+    return f"https://github.com/{r}/blob/main/dist/report.md"
+
+
+# ---------------- report.md (redesign) ----------------
+
 def format_report_md(state: Dict, stats: List[Dict], prev_rec: Optional[Dict]) -> str:
     build_time = fmt_build_time_msk(str(state.get("build_time_utc", "")))
     repo = str(state.get("repo", "unknown/unknown"))
     output = str(state.get("output", "dist/inside-kvas.lst"))
+
     max_lines = int(state.get("max_lines", 3000))
     threshold = int(state.get("near_limit_threshold", 2900))
 
@@ -210,211 +228,241 @@ def format_report_md(state: Dict, stats: List[Dict], prev_rec: Optional[Dict]) -
     failed_cats = state.get("failed_categories") or []
     warns = state.get("warnings") or []
 
-    # diffs
+    # diffs (top 20 shown in <details>)
     prev = state.get("prev") if isinstance(state.get("prev"), dict) else {}
     it_added, it_removed = diff_lists(prev.get("itdog_domains", []), state.get("itdog_domains", []))
     v2_added, v2_removed = diff_lists(prev.get("v2fly_extras", []), state.get("v2fly_extras", []))
     f_added, f_removed = diff_lists(prev.get("final_domains", []), state.get("final_domains", []))
 
-    # limit
     p = pct(final_total, max_lines)
-    near = "НЕТ"
-    near_mark = "✅"
-    if final_total >= threshold:
-        near = "ДА"
-        near_mark = "⚠️"
+    badge = limit_badge(p)
+    near = final_total >= threshold or p >= 96.0
 
-    # warnings line
-    warn_parts = []
-    if len(failed_cats) > 0 or v2_fail > 0:
-        warn_parts.append(f"{max(len(failed_cats), v2_fail)} ошибка загрузки")
-    if len(empty_cats) > 0:
-        warn_parts.append(f"{len(empty_cats)} пустая категория")
-    if trunc > 0:
-        warn_parts.append("есть обрезка по лимиту")
-    if len(warns) > 0 and not warn_parts:
-        warn_parts.append(f"{len(warns)} предупреждение")
+    sha = short_hash(str(state.get("sha256_final", "")))
+    url = repo_report_url(repo)
 
-    if warn_parts:
-        warn_line = "⚠️ Есть предупреждения: " + ", ".join(warn_parts)
+    # Severity / warnings
+    sev = classify_severity(state)
+    if sev == "ОШИБКА":
+        status_lines = ["### 🚨 Сборка завершена с ошибками"]
+    elif sev == "ПРЕДУПРЕЖДЕНИЕ":
+        status_lines = ["### ⚠️ Сборка завершена с предупреждениями"]
     else:
-        warn_line = "✅ Предупреждений нет"
+        status_lines = ["### ✅ Сборка завершена"]
 
-    # critical problems
-    critical = []
-    if failed_cats:
-        critical.append("🔴 Категории не скачались/не распарсились: " + ", ".join(failed_cats))
-    if trunc > 0:
-        critical.append(f"🔴 Обрезка по лимиту: ДА (обрезано строк: {trunc})")
-    if bad > 0:
-        critical.append(f"🔴 Некорректные строки в выводе: {bad}")
-    if p >= 96.0 or final_total >= threshold:
-        critical.append(f"🔴 Почти лимит: {final_total} / {max_lines} ({p}%)")
+    if failed_cats or empty_cats or warns or trunc or bad or near:
+        # keep the high-level line consistent
+        if sev == "ОК":
+            status_lines.append("### 🟡 Требует внимания")
+        elif sev == "ПРЕДУПРЕЖДЕНИЕ":
+            status_lines.append("### 🟡 Требует внимания")
+        else:
+            status_lines.append("### 🔴 Критический статус")
+    else:
+        status_lines.append("### 🟢 Предупреждений нет")
 
-    # v2fly table
+    # v2fly categories table
     per_cat = state.get("v2fly_per_category") if isinstance(state.get("v2fly_per_category"), dict) else {}
     table_rows = []
     for c in cats:
         meta = per_cat.get(c, {}) if isinstance(per_cat.get(c, {}), dict) else {}
         table_rows.append(
-            f"{c} | {int(meta.get('valid_domains',0))} | {int(meta.get('extras_added',0))} | "
-            f"{int(meta.get('invalid_lines',0))} | {int(meta.get('skipped_directives',0))} | {status_emoji(str(meta.get('status','')))}"
+            f"| {c} | {int(meta.get('valid_domains',0))} | {int(meta.get('extras_added',0))} | "
+            f"{int(meta.get('invalid_lines',0))} | {int(meta.get('skipped_directives',0))} | {status_emoji(str(meta.get('status','')))} |"
         )
     if not table_rows:
-        table_rows.append("— | 0 | 0 | 0 | 0 | —")
+        table_rows.append("| — | 0 | 0 | 0 | 0 | — |")
 
-    sha = short_hash(str(state.get("sha256_final", "")))
-
-    # diagnostics
-    intersection = len(set(state.get("itdog_domains", [])) & set(state.get("v2fly_extras", [])))
+    # Diagnostics
     reserve = max_lines - final_total
     risk = "низкий 🟢" if p < 85.0 else ("средний 🟡" if p < 96.0 else "высокий 🔴")
+    avg7, delta, deviation, eval_line = trend_eval(stats, prev_rec, final_total)
 
-    lines: List[str] = []
-    lines.append("# 📊 Отчёт сборки доменов KVAS")
-    lines.append("")
-    lines.append(f"Сборка: {build_time}")
-    lines.append(f"Репозиторий: {repo}")
-    lines.append(f"Выходной файл: {output}")
-    lines.append(f"Лимит строк: {max_lines}")
-    lines.append("")
-
-    if critical:
-        lines.append("🔥 Критичные проблемы")
-        lines.extend(critical)
-        lines.append("")
-
-    lines.append("🚦 Статус сборки")
-    lines.append("")
-    lines.append("✅ Сборка завершена" if classify_severity(state) != "ОШИБКА" else "🚨 Сборка завершена с ошибками")
-    lines.append(warn_line)
-    lines.append(f"🧾 Некорректных строк в итоговом выводе: {bad}")
-    lines.append(f"✂️ Обрезка по лимиту: {'НЕТ' if trunc == 0 else 'ДА'}")
-    lines.append("")
-
-    lines.append("📌 Сводка")
-    lines.append("")
-    lines.append("itdog")
-    lines.append("")
-    lines.append(f"всего: {itdog_total}")
-    lines.append(f"изменение к прошлому запуску: +{len(it_added)} / -{len(it_removed)}")
-    lines.append("")
-    lines.append("v2fly (только extras — отсутствуют в itdog)")
-    lines.append("")
-    lines.append(f"всего extras: {v2_total}")
-    lines.append(f"изменение к прошлому запуску: +{len(v2_added)} / -{len(v2_removed)}")
-    lines.append(f"категории: {len(cats)} (🟢 ok={v2_ok} / 🔴 fail={v2_fail} / 🟡 пусто={len(empty_cats)})")
-    lines.append("")
-    lines.append("итоговый список")
-    lines.append("")
-    lines.append(f"всего: {final_total}")
-    lines.append(f"изменение к прошлому запуску: +{len(f_added)} / -{len(f_removed)}")
-    lines.append(f"обрезано строк: {trunc}")
-    lines.append("")
-
-    lines.append("📈 Лимит")
-    lines.append("")
-    lines.append(f"использование: {final_total} / {max_lines} ({p}% занято) {limit_badge(p)}")
-    lines.append(f"близко к лимиту: {near} (порог: {threshold}) {near_mark}")
-    lines.append("")
-    lines.append("Правило подсветки:")
-    lines.append("🟢 до 85% — нормально | 🟡 85–96% — внимание | 🔴 ≥ 96% — критично")
-    lines.append("")
-
-    def block_changes(title: str, added: List[str], removed: List[str]) -> None:
-        lines.append(title)
-        lines.append("➕ Добавлено")
-        if added:
-            lines.extend(added[:20])
-        else:
-            lines.append("—")
-        lines.append("")
-        lines.append("➖ Удалено")
-        if removed:
-            lines.extend(removed[:20])
-        else:
-            lines.append("—")
-        lines.append("")
-
-    block_changes("🔄 Изменения itdog (топ 20)", it_added, it_removed)
-    block_changes("🔄 Изменения v2fly extras (топ 20)", v2_added, v2_removed)
-    block_changes("🔄 Изменения итогового списка (топ 20)", f_added, f_removed)
-
-    lines.append("📂 Статистика v2fly по категориям")
-    lines.append("")
-    lines.append("Категория | Валидных доменов | Добавлено в extras | Некорректных строк | Пропущено директив | Статус")
-    lines.append("---|---:|---:|---:|---:|---")
-    lines.extend(table_rows)
-    lines.append("")
-    lines.append("Легенда статусов: 🟢 ОК | 🟡 ПУСТО (0 валидных доменов) | 🔴 ОШИБКА (скачивание/парсинг)")
-    lines.append("")
-    lines.append("Примечания")
-    lines.append("- Валидных доменов — извлечённые из категории после фильтра (full:/domain:/голые домены)")
-    lines.append("- Добавлено в extras — реально попали в хвост (не пересекаются с itdog)")
-    lines.append("- Пропущено директив — include:/regexp:/keyword:/etc (не разворачиваются)")
-    lines.append("")
-
-    lines.append("⚠️ Предупреждения")
-    lines.append("")
+    # Problems list (for report)
+    problems: List[str] = []
     if failed_cats:
-        lines.append("🔴 Ошибки (требуют внимания)")
-        lines.append("Категории не скачались/не распарсились: " + ", ".join(failed_cats))
-        lines.append("")
+        problems.append("🔴 Категории не скачались/не распарсились: " + ", ".join(failed_cats))
     if empty_cats:
-        lines.append("🟡 Аномалии (не критично, но полезно знать)")
-        lines.append("Пустые категории (0 доменов): " + ", ".join(empty_cats))
-        lines.append("")
-    if not failed_cats and not empty_cats and not warns and trunc == 0 and bad == 0:
-        lines.append("✅ Замечаний нет")
-        lines.append("")
+        problems.append("🟡 Пустые категории (0 доменов): " + ", ".join(empty_cats))
+    if near:
+        problems.append("🟠 Почти лимит")
+    if trunc > 0:
+        problems.append(f"🔴 Обрезка по лимиту: {trunc} строк")
+    if bad > 0:
+        problems.append(f"🔴 Некорректные строки в выводе: {bad}")
 
-    lines.append("✅ Проверки качества")
-    lines.append("")
-    lines.append(f"Некорректные строки в выводе: {bad}")
-    lines.append(f"Обрезка по лимиту: {'НЕТ' if trunc == 0 else 'ДА'}")
-    lines.append("")
+    # Build the markdown (3 typography levels)
+    L: List[str] = []
+    L.append("# 📊 Отчёт сборки доменов KVAS")
+    L.append("")
+    L.append("## 🧭 Общая информация")
+    L.append("")
+    L.append(f"> 🕒 **Сборка:** {build_time}  ")
+    L.append(f"> 📦 **Репозиторий:** {repo}  ")
+    L.append(f"> 📄 **Выходной файл:** `{output}`  ")
+    L.append(f"> 📏 Лимит строк: **{max_lines}**")
+    if url:
+        L.append(f"> 🔗 Отчёт: {url}")
+    L.append("")
+    L.append("---")
+    L.append("")
+    L.append("## 🧮 Итог сборки")
+    L.append("")
+    L.append(f"> ### 📊 {final_total} / {max_lines} ({p}%) {badge}")
+    L.append(f"> **Запас:** {reserve} строк  ")
+    L.append(f"> **Обрезка:** {'ДА' if trunc else 'НЕТ'}  ")
+    L.append(f"> **Некорректных строк:** {bad}")
+    L.append("")
+    L.append("---")
+    L.append("")
+    L.append("## 🚦 Статус")
+    L.append("")
+    L.extend(status_lines)
+    L.append("")
+    if problems:
+        L.append("### ⚠️ Замечания")
+        for x in problems:
+            L.append(f"- {x}")
+        L.append("")
+    else:
+        L.append("### ✅ Замечаний нет")
+        L.append("")
 
-    lines.append("🔐 Хеши")
-    lines.append("")
-    lines.append(f"sha256(final): {sha}")
-    lines.append("")
-
-    lines.append("🧪 Диагностика сборки")
-    lines.append("")
-    lines.append(f"источник itdog: {itdog_total} домена (уник.)")
-    lines.append(f"v2fly extras: {v2_total} доменов (после вычитания пересечений)")
-    lines.append("пересечения itdog ∩ v2fly: (скрыто / можно добавить при желании)")
-    lines.append("")
-    lines.append(f"итог до лимита: {final_total} строк")
-    lines.append(f"запас до лимита: {reserve} строк")
-    lines.append(f"риск переполнения лимита: {risk}")
-    lines.append("")
-    lines.append(f"здоровье v2fly: fail={max(len(failed_cats), v2_fail)} 🔴 / empty={len(empty_cats)} 🟡")
+    L.append("---")
+    L.append("")
+    L.append("## 📌 Сводка источников")
+    L.append("")
+    L.append("### 🗂 itdog")
+    L.append("")
+    L.append(f"- Всего доменов: **{itdog_total}**")
+    L.append(f"- Изменение: **+{len(it_added)} / -{len(it_removed)}**")
+    L.append("")
+    L.append("### 🌐 v2fly (extras)")
+    L.append("")
+    L.append(f"- Всего extras: **{v2_total}**")
+    L.append(f"- Изменение: **+{len(v2_added)} / -{len(v2_removed)}**")
+    L.append(f"- Категорий: **{len(cats)}**")
+    L.append("")
+    L.append(f"🟢 OK: {v2_ok}  ")
+    L.append(f"🔴 FAIL: {v2_fail}  ")
+    L.append(f"🟡 ПУСТО: {len(empty_cats)}")
+    L.append("")
+    L.append("### 📦 Итоговый список")
+    L.append("")
+    L.append(f"- Всего: **{final_total}**")
+    L.append(f"- Изменение: **+{len(f_added)} / -{len(f_removed)}**")
+    L.append(f"- Обрезано: **{trunc}**")
+    L.append("")
+    L.append("---")
+    L.append("")
+    L.append("## 📈 Использование лимита")
+    L.append("")
+    L.append(f"### 📊 {final_total} / {max_lines} ({p}%) {badge}")
+    L.append("")
+    L.append("🟢 до 85% — нормально  ")
+    L.append("🟡 85–96% — внимание  ")
+    L.append("🔴 ≥ 96% — критично")
+    L.append("")
+    L.append(f"Близко к лимиту: **{'ДА' if near else 'НЕТ'}** (порог {threshold})")
+    L.append("")
+    L.append("---")
+    L.append("")
+    L.append("## 📂 v2fly — категории")
+    L.append("")
+    L.append("| Категория | Валидных | Добавлено | Некорректных | Пропущено | Статус |")
+    L.append("|---|---:|---:|---:|---:|---|")
+    L.extend(table_rows)
+    L.append("")
+    L.append("---")
+    L.append("")
+    L.append("## 🔐 Хеш")
+    L.append("")
+    L.append(f"> sha256(final): **{sha}**")
+    L.append("")
+    L.append("---")
+    L.append("")
+    L.append("<details>")
+    L.append("<summary>🔄 Изменения (топ 20)</summary>")
+    L.append("")
+    L.append("### itdog")
+    L.append("**➕ Добавлено**")
+    L.extend([f"- {x}" for x in it_added[:20]] or ["- —"])
+    L.append("")
+    L.append("**➖ Удалено**")
+    L.extend([f"- {x}" for x in it_removed[:20]] or ["- —"])
+    L.append("")
+    L.append("---")
+    L.append("")
+    L.append("### v2fly extras")
+    L.append("**➕ Добавлено**")
+    L.extend([f"- {x}" for x in v2_added[:20]] or ["- —"])
+    L.append("")
+    L.append("**➖ Удалено**")
+    L.extend([f"- {x}" for x in v2_removed[:20]] or ["- —"])
+    L.append("")
+    L.append("---")
+    L.append("")
+    L.append("### итоговый список")
+    L.append("**➕ Добавлено**")
+    L.extend([f"- {x}" for x in f_added[:20]] or ["- —"])
+    L.append("")
+    L.append("**➖ Удалено**")
+    L.extend([f"- {x}" for x in f_removed[:20]] or ["- —"])
+    L.append("")
+    L.append("</details>")
+    L.append("")
+    L.append("<details>")
+    L.append("<summary>🧪 Диагностика</summary>")
+    L.append("")
+    L.append(f"- источник itdog: **{itdog_total}** домена (уник.)")
+    L.append(f"- v2fly extras: **{v2_total}** доменов (после вычитания пересечений)")
+    L.append(f"- итог до лимита: **{final_total}** строк")
+    L.append(f"- запас до лимита: **{reserve}** строк")
+    L.append(f"- риск переполнения лимита: **{risk}**")
+    L.append("")
+    L.append("### 📈 Тренд")
+    L.append(f"- Среднее (7): **{avg7}**")
+    L.append(f"- Δ к прошлой: **{delta:+d}**")
+    L.append(f"- Отклонение: **{deviation:+d}**")
+    L.append(f"- {eval_line}")
+    L.append("")
+    L.append("### 🧠 v2fly здоровье")
+    L.append(f"- fail={max(len(failed_cats), v2_fail)} 🔴")
+    L.append(f"- empty={len(empty_cats)} 🟡")
     if failed_cats or empty_cats:
+        L.append("")
         recs = []
         if failed_cats:
-            recs.append("проверить " + ", ".join([x.split(" ",1)[0] for x in failed_cats]))
+            recs.append("проверить: " + ", ".join([x.split("(", 1)[0].strip() for x in failed_cats]))
         if empty_cats:
-            recs.append("проверить " + ", ".join(empty_cats))
-        lines.append("рекомендация: " + ", ".join(recs))
-    return "\n".join(lines).rstrip() + "\n"
+            recs.append("проверить: " + ", ".join(empty_cats))
+        L.append("### ✅ Рекомендации")
+        for r in recs:
+            L.append(f"- {r}")
+    else:
+        L.append("")
+        L.append("### ✅ Рекомендации")
+        L.append("- отсутствуют")
+    L.append("")
+    L.append("</details>")
+    L.append("")
+    return "\n".join(L).rstrip() + "\n"
 
+
+# ---------------- Telegram ----------------
 
 def tg_problems_lines(state: Dict) -> List[str]:
     lines: List[str] = []
     failed = state.get("failed_categories") or []
     empty = state.get("empty_categories") or []
-    warns = state.get("warnings") or []
 
-    # failed categories: already include "(HTTP ...)" when possible
     for f in failed:
-        # "tiktok (HTTP 404)" -> "🔴 tiktok — 404"
         name = str(f)
-        m = None
         if "HTTP" in name:
-            m = name.split("HTTP", 1)[1].strip().strip("()")
-            code = m.split()[0]
+            # "tiktok (HTTP 404)" -> "🔴 tiktok — 404"
             cat = name.split("(", 1)[0].strip()
+            tail = name.split("HTTP", 1)[1].strip().strip("()")
+            code = tail.split()[0]
             lines.append(f"🔴 {cat} — {code}")
         else:
             cat = name.split("(", 1)[0].strip()
@@ -432,21 +480,16 @@ def tg_problems_lines(state: Dict) -> List[str]:
 
     trunc = int(state.get("truncated", 0))
     if trunc > 0:
-        lines.append(f"🔴 обрезка — {trunc}")
+        lines.append(f"🔴 Обрезка — {trunc}")
 
     bad = int(state.get("bad_output_lines", 0))
     if bad > 0:
-        lines.append(f"🔴 некорректные строки — {bad}")
+        lines.append(f"🔴 Некорректные строки — {bad}")
 
-    # If we have generic warnings that are not categories, keep compact
-    # (Do not spam; main problems above are enough.)
     return lines
 
 
 def format_tg(state: Dict, stats: List[Dict], prev_rec: Optional[Dict]) -> Tuple[str, str]:
-    """
-    Returns (tg_message, tg_alert).
-    """
     sev = classify_severity(state)
     date_s, time_s = fmt_tg_date_time(str(state.get("build_time_utc", "")))
 
@@ -456,18 +499,18 @@ def format_tg(state: Dict, stats: List[Dict], prev_rec: Optional[Dict]) -> Tuple
     rest = max_lines - total
 
     sha = short_hash(str(state.get("sha256_final", "")))
+    url = repo_report_url(str(state.get("repo", "")))
 
-    avg7, delta, deviation, eval_line = trend_block(stats, prev_rec, total)
-
+    avg7, delta, deviation, eval_line = trend_eval(stats, prev_rec, total)
     problems = tg_problems_lines(state)
 
-    # alert text (only when not OK)
+    # tg_alert only for WARNING/ERROR
     tg_alert = ""
     if sev != "ОК" and problems:
-        tg_alert = "\n".join(problems) + "\n"
+        tg_alert = "\n".join(problems).rstrip() + "\n"
 
     if sev == "ОШИБКА":
-        msg_lines = [
+        msg = [
             "🚨 Сборка завершена с ошибками",
             "🔴 Критический статус",
             "",
@@ -477,7 +520,7 @@ def format_tg(state: Dict, stats: List[Dict], prev_rec: Optional[Dict]) -> Tuple
             "━━━━━━━━━━━━━━━━━━",
             "📦 РЕЗУЛЬТАТ",
             "━━━━━━━━━━━━━━━━━━",
-            f"📊 {total} / {max_lines} ({p}%)",
+            f"📊 {total} / {max_lines} ({p}%) {limit_badge(p)}",
             f"🧮 Остаток: {rest} строк",
             "",
             "━━━━━━━━━━━━━━━━━━",
@@ -492,12 +535,14 @@ def format_tg(state: Dict, stats: List[Dict], prev_rec: Optional[Dict]) -> Tuple
             "⚠ ПРОБЛЕМЫ",
             "━━━━━━━━━━━━━━━━━━",
         ]
-        msg_lines += (problems if problems else ["—"])
-        msg_lines += ["", f"🔐 sha256: {sha}"]
-        return "\n".join(msg_lines).rstrip() + "\n", tg_alert
+        msg += (problems if problems else ["—"])
+        msg += ["", f"🔐 sha256: {sha}"]
+        if url:
+            msg += [f"🔗 Отчёт: {url}"]
+        return "\n".join(msg).rstrip() + "\n", tg_alert
 
     if sev == "ПРЕДУПРЕЖДЕНИЕ":
-        msg_lines = [
+        msg = [
             "⚠️ Сборка завершена с предупреждениями",
             "🟡 Требует внимания",
             "",
@@ -507,7 +552,7 @@ def format_tg(state: Dict, stats: List[Dict], prev_rec: Optional[Dict]) -> Tuple
             "━━━━━━━━━━━━━━━━━━",
             "📦 РЕЗУЛЬТАТ",
             "━━━━━━━━━━━━━━━━━━",
-            f"📊 {total} / {max_lines} ({p}%)",
+            f"📊 {total} / {max_lines} ({p}%) {limit_badge(p)}",
             f"🧮 Остаток: {rest} строк",
             "",
             "━━━━━━━━━━━━━━━━━━",
@@ -522,19 +567,21 @@ def format_tg(state: Dict, stats: List[Dict], prev_rec: Optional[Dict]) -> Tuple
             "⚠ ПРОБЛЕМЫ",
             "━━━━━━━━━━━━━━━━━━",
         ]
-        msg_lines += (problems if problems else ["—"])
-        msg_lines += ["", f"🔐 sha256: {sha}"]
-        return "\n".join(msg_lines).rstrip() + "\n", tg_alert
+        msg += (problems if problems else ["—"])
+        msg += ["", f"🔐 sha256: {sha}"]
+        if url:
+            msg += [f"🔗 Отчёт: {url}"]
+        return "\n".join(msg).rstrip() + "\n", tg_alert
 
-    # OK (short template)
-    msg_lines = [
+    # OK (approved compact)
+    msg = [
         "🚀 Сборка завершена",
         "🟢 Система стабильна",
         "",
         f"🗓 {date_s}",
         f"🕒 {time_s}",
         "",
-        f"📊 {total} / {max_lines} ({p}%)",
+        f"📊 {total} / {max_lines} ({p}%) {limit_badge(p)}",
         "",
         "📈 ТРЕНД",
         f"Среднее (7): {avg7}",
@@ -545,7 +592,9 @@ def format_tg(state: Dict, stats: List[Dict], prev_rec: Optional[Dict]) -> Tuple
         "",
         f"🔐 sha256: {sha}",
     ]
-    return "\n".join(msg_lines).rstrip() + "\n", tg_alert
+    if url:
+        msg.append(f"🔗 Отчёт: {url}")
+    return "\n".join(msg).rstrip() + "\n", ""
 
 
 def main() -> int:
@@ -553,8 +602,8 @@ def main() -> int:
 
     state = load_json(STATE_JSON, {})
     if not isinstance(state, dict) or not state:
-        # Fallback: create minimal artifacts, do not crash workflow
-        now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00","Z")
+        # minimal fallback, don't crash workflow
+        now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
         state = {
             "build_time_utc": now,
             "repo": "unknown/unknown",
@@ -583,10 +632,8 @@ def main() -> int:
 
     stats, prev_rec = append_stats(state)
 
-    # report.md
     REPORT_MD.write_text(format_report_md(state, stats, prev_rec), encoding="utf-8")
 
-    # telegram
     tg_msg, tg_alert = format_tg(state, stats, prev_rec)
     TG_MESSAGE.write_text(tg_msg, encoding="utf-8")
     if tg_alert.strip():
