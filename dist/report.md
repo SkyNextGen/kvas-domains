@@ -1,57 +1,126 @@
-MSK: 2026-02-15T09:36:52+03:00
-UTC: 2026-02-15T06:36:52+00:00
+# KVAS domains build report
 
-- Итог: 1793 (Δ —)
-- itdog новых: 1123
-- v2fly новых: 670
+Build time (UTC): 2026-02-15 06:46:56
+Repo: SkyNextGen/kvas-domains
+Output: dist/inside-kvas.lst
+Max lines: 3000
 
-## v2fly (по категориям)
+## Summary
+- itdog:
+  - total: 1123
+  - change vs prev: +1123 / -0
+- v2fly (extras only: not in itdog):
+  - total: 670
+  - change vs prev: +670 / -0
+  - lists: ok=8, fail=0
+- final output:
+  - total: 1793
+  - change vs prev: +1793 / -0
+  - truncated: 0
 
-| Категория | Статус | Доменов | Примечание |
-|---|---:|---:|---|
-| `discord` | OK | 28 |  |
-| `instagram` | OK | 72 |  |
-| `openai` | OK | 16 |  |
-| `telegram` | OK | 20 |  |
-| `whatsapp` | OK | 11 |  |
-| `youtube` | OK | 175 |  |
-| `facebook` | OK | 394 |  |
-| `wbgames` | OK | 6 |  |
+## Limit status
+- usage: 1793 / 3000 (59.8%)
+- near limit: NO (threshold: 2900)
 
-## Предупреждения
+## itdog changes vs prev (top 20)
+### Added
+1. 10minutemail.com
+2. 1337x.to
+3. 24.kg
+4. 4freerussia.org
+5. 4pda.to
+6. 4pda.ws
+7. 4pna.com
+8. 5sim.net
+9. 7dniv.rv.ua
+10. 7tv.app
+11. 7tv.io
+12. 9tv.co.il
+13. a-vrv.akamaized.net
+14. abercrombie.com
+15. abook-club.ru
+16. academy.terrasoft.ua
+17. activatica.org
+18. adguard.com
+19. adidas.com
+20. adminforge.de
+### Removed
+- none
 
-нет
+## v2fly extras changes vs prev (top 20)
+### Added
+1. aboutfacebook.com
+2. accessfacebookfromschool.com
+3. acebooik.com
+4. acebook.com
+5. achat-followers-instagram.com
+6. acheter-followers-instagram.com
+7. acheterdesfollowersinstagram.com
+8. acheterfollowersinstagram.com
+9. advancediddetection.com
+10. airhorn.solutions
+11. airhornbot.com
+12. askfacebook.net
+13. askfacebook.org
+14. atdmt2.com
+15. atlasdmt.com
+16. atlasonepoint.com
+17. bigbeans.solutions
+18. bookstagram.com
+19. buyingfacebooklikes.com
+20. careersatfb.com
+### Removed
+- none
 
-## Топ добавленных
+## final output changes vs prev (top 20)
+### Added
+1. 10minutemail.com
+2. 1337x.to
+3. 24.kg
+4. 4freerussia.org
+5. 4pda.to
+6. 4pda.ws
+7. 4pna.com
+8. 5sim.net
+9. 7dniv.rv.ua
+10. 7tv.app
+11. 7tv.io
+12. 9tv.co.il
+13. a-vrv.akamaized.net
+14. abercrombie.com
+15. abook-club.ru
+16. aboutfacebook.com
+17. academy.terrasoft.ua
+18. accessfacebookfromschool.com
+19. acebooik.com
+20. acebook.com
+### Removed
+- none
 
-10minutemail.com
-1337x.to
-24.kg
-4freerussia.org
-4pda.to
-4pda.ws
-4pna.com
-5sim.net
-7dniv.rv.ua
-7tv.app
-7tv.io
-9tv.co.il
-a-vrv.akamaized.net
-abercrombie.com
-abook-club.ru
-aboutfacebook.com
-academy.terrasoft.ua
-accessfacebookfromschool.com
-acebooik.com
-acebook.com
+## v2fly per-category stats
+| category | valid_domains | extras_added | invalid_lines | skipped_directives | status |
+|---|---:|---:|---:|---:|---|
+| discord | 28 | 8 | 0 | 0 | OK |
+| instagram | 72 | 69 | 2 | 0 | OK |
+| openai | 16 | 9 | 2 | 1 | OK |
+| telegram | 20 | 20 | 0 | 0 | OK |
+| whatsapp | 11 | 8 | 2 | 0 | OK |
+| youtube | 175 | 162 | 3 | 0 | OK |
+| facebook | 394 | 389 | 3 | 0 | OK |
+| wbgames | 6 | 5 | 0 | 0 | OK |
 
-## Топ удалённых
+Notes:
+- `valid_domains` = домены, извлечённые из категории после фильтра (full:/domain:/голые домены)
+- `extras_added` = домены, которые реально попали в хвост (не пересекаются с itdog)
+- `skipped_directives` = include:/regexp:/keyword:/etc (мы их не разворачиваем)
 
-нет
+## Warnings
+- Failed categories (download/parse errors):
+- none
+- Empty categories (0 valid domains):
+- none
+- Bad output lines: 0
+- Truncated output: NO
 
-## Рост за всё время
-
-- Билдов: 1
-- Минимум: 1793
-- Максимум: 1793
-- Рост с первого: +0
+## Hashes
+- sha256(final): 9119...8e20
