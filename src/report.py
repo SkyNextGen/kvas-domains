@@ -302,7 +302,13 @@ def main() -> int:
     trend_ascii = ascii_trend_block(totals7_after) if totals7_after else "—"
 
     # intersection
-    intersection = len(set(itdog_domains) & set(v2fly_extras))
+    v2fly_all_domains = state.get("v2fly_all_domains", []) or []
+    if not isinstance(v2fly_all_domains, list): v2fly_all_domains = []
+    v2fly_all_set = set(v2fly_all_domains)
+    v2fly_all_total = len(v2fly_all_set)
+    overlap_total = len(set(itdog_domains) & v2fly_all_set)
+    overlap_pct = round((overlap_total / v2fly_all_total) * 100, 1) if v2fly_all_total else 0.0
+    extras_pct = round((v2fly_total / v2fly_all_total) * 100, 1) if v2fly_all_total else 0.0
 
     # v2fly per-category table (translated status)
     cats = state.get("v2fly_categories", []) or []
@@ -389,6 +395,7 @@ def main() -> int:
 - `valid_domains` = домены, извлечённые из категории (full:/domain:/голые домены)
 - `extras_added` = домены, реально попавшие в хвост (не пересекаются с itdog)
 - `skipped_directives` = include:/regexp:/keyword:/etc (не разворачиваются)
+- `invalid_lines` = строки, отброшенные при парсинге из‑за некорректного формата (не домен/неподдерживаемая запись)
 
 ---
 
@@ -405,12 +412,11 @@ def main() -> int:
 ## 🧪 Диагностика
 
 - itdog уникальных: **{itdog_total}**
-- v2fly extras: **{v2fly_total}**
-- Пересечение itdog ∩ v2fly: **{intersection}**
+- v2fly всего (до фильтрации itdog): **{v2fly_all_total}**
+- v2fly extras (после вычитания itdog): **{v2fly_total}** ({extras_pct}%)
+- Пересечение источников itdog ∩ v2fly: **{overlap_total}** ({overlap_pct}%)
 - Запас до лимита: **{max_lines - final_total}** строк
 - v2fly категорий: **{cats_total}** (ok={v2fly_ok}, fail={v2fly_fail}, пусто={len(empty_categories)})
-
----
 
 ## 🔐 Хеш
 
