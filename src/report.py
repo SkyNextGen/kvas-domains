@@ -344,7 +344,7 @@ def format_report_md(state: Dict, stats: List[Dict], prev_rec: Optional[Dict]) -
     L.append(f"- Категорий: **{len(cats)}**")
     L.append("")
     L.append(f"🟢 OK: {v2_ok}  ")
-    L.append(f"🔴 FAIL: {v2_fail}  ")
+    L.append(f"🔴 ОШИБКА: {v2_fail}  ")
     L.append(f"🟡 ПУСТО: {len(empty_cats)}")
     L.append("")
     L.append("### 📦 Итоговый список")
