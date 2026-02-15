@@ -1,5 +1,5 @@
 {
-  "build_time_utc": "2026-02-15 07:04:30 UTC",
+  "build_time_utc": "2026-02-15 11:17:35 UTC",
   "repo": "SkyNextGen/kvas-domains",
   "output": "dist/inside-kvas.lst",
   "max_lines": 3000,
@@ -7270,6 +7270,6 @@
       "zuckerberg.net"
     ],
     "sha256_final": "9119d44f62720e22a6bcac9ec9326b829ca07e6722f8bc31f1c98632822b8e20",
-    "build_time_utc": "2026-02-15 06:46:56 UTC"
+    "build_time_utc": "2026-02-15 07:04:30 UTC"
   }
 }
