@@ -39,8 +39,8 @@ V2FLY_ONLY = DIST / "v2fly-only.lst"
 DEBUG_V2FLY = DIST / "debug_v2fly.txt"
 
 # Default limits (can be overridden by existing state.json)
-DEFAULT_MAX_LINES = 1850
-DEFAULT_NEAR_LIMIT = 1800
+DEFAULT_MAX_LINES = 3000
+DEFAULT_NEAR_LIMIT = 2900
 
 # Sources
 ITDOG_URL = "https://raw.githubusercontent.com/itdoginfo/allow-domains/main/Russia/inside-kvas.lst"
