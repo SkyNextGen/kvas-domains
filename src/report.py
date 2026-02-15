@@ -29,6 +29,7 @@ from typing import Dict, List, Optional, Tuple
 
 ROOT = Path(__file__).resolve().parents[1]
 DIST_DIR = ROOT / "dist"
+DIST_DIR.mkdir(parents=True, exist_ok=True)
 
 STATE_JSON = DIST_DIR / "state.json"
 REPORT_OUT = DIST_DIR / "report.md"
@@ -104,6 +105,70 @@ def dump_json(path: Path, obj) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding="utf-8")
 
+
+
+# ------------------------- fallback / safety -------------------------
+
+def write_fallback_reports(reason: str) -> int:
+    """Generate minimal report + Telegram message when state.json is missing/broken.
+    Always returns 0 (so workflow step can be marked success if desired)."""
+    DIST_DIR.mkdir(parents=True, exist_ok=True)
+    dt = now_msk_dt()
+    d_s, t_s = format_tg_date_time(dt)
+
+    # Minimal markdown report
+    m = MONTHS_RU[dt.month - 1]
+    build_time = f"{dt.day:02d} {m} {dt.year}, {dt:%H:%M} МСК"
+    report = [
+        "# 📊 Отчёт сборки доменов KVAS",
+        "",
+        f"Сборка: {build_time}",
+        "Репозиторий: —",
+        "Выходной файл: dist/inside-kvas.lst",
+        "Лимит строк: 3000",
+        "",
+        "🔥 Критичные проблемы",
+        f"🔴 Отчёт сформирован в аварийном режиме: {reason}",
+        "",
+        "🚦 Статус сборки",
+        "",
+        "🚨 Сборка завершена с ошибками",
+        "🔴 Критический статус",
+        "",
+        "✅ Проверки качества",
+        "",
+        "Некорректные строки в выводе: —",
+        "Обрезка по лимиту: —",
+        "",
+        "🧪 Диагностика сборки",
+        "",
+        "state.json: отсутствует/повреждён",
+    ]
+    REPORT_OUT.write_text("\n".join(report).rstrip() + "\n", encoding="utf-8")
+
+    # Telegram message (ERROR mode, but without numbers)
+    tg = [
+        "🚨 Сборка завершена с ошибками",
+        "🔴 Критический статус",
+        "",
+        f"🗓 {d_s}",
+        f"🕒 {t_s}",
+        "",
+        "━━━━━━━━━━━━━━━━━━",
+        "📦 РЕЗУЛЬТАТ",
+        "━━━━━━━━━━━━━━━━━━",
+        "📊 — / —",
+        "",
+        "━━━━━━━━━━━━━━━━━━",
+        "⚠ ПРОБЛЕМЫ",
+        "━━━━━━━━━━━━━━━━━━",
+        f"🔴 {reason}",
+        "",
+        "🔐 sha256: —",
+    ]
+    TG_MESSAGE_OUT.write_text("\n".join(tg).strip() + "\n", encoding="utf-8")
+    TG_ALERT_OUT.write_text("\n".join(tg).strip() + "\n", encoding="utf-8")
+    return 0
 
 # ------------------------- domain set helpers -------------------------
 
@@ -297,9 +362,10 @@ def classify_severity(
 # ------------------------- main -------------------------
 
 def main() -> int:
+    DIST_DIR.mkdir(parents=True, exist_ok=True)
     state = load_json(STATE_JSON, {})
     if not isinstance(state, dict):
-        raise SystemExit("Bad dist/state.json")
+        return write_fallback_reports("dist/state.json повреждён или отсутствует")
 
     prev = state.get("prev", {}) if isinstance(state.get("prev"), dict) else {}
 
