@@ -1,10 +1,10 @@
 {
-  "build_time_utc": "2026-02-15T14:40:43Z",
+  "build_time_utc": "2026-02-15T15:15:32Z",
   "repo": "SkyNextGen/kvas-domains",
   "output": "dist/inside-kvas.lst",
   "max_lines": 3000,
   "near_limit_threshold": 2900,
-  "sha256_final": "9119d44f62720e22a6bcac9ec9326b829ca07e6722f8bc31f1c98632822b8e20",
+  "sha256_final": "8e9ee263bfd87db994c2bb6b271eb3c83acca7ac2b87d8a9b13b221471b8c6e0",
   "itdog_domains": [
     "10minutemail.com",
     "1337x.to",
@@ -1491,6 +1491,7 @@
     "futureofbusinesssurvey.org",
     "gacebook.com",
     "gameroom.com",
+    "gaytube.com",
     "gfacecbook.com",
     "graph.org",
     "groups.com",
@@ -1584,6 +1585,11 @@
     "openaicom.imgix.net",
     "openaicomproductionae4b.blob.core.windows.net",
     "opencreate.org",
+    "phprcdn.com",
+    "porngub.com",
+    "pornhub-deutsch.net",
+    "pornhubapparel.com",
+    "pornhubpremium.com",
     "quiz.directory",
     "reachtheworldonfacebook.com",
     "redkix.com",
@@ -3286,6 +3292,7 @@
     "futureofbusinesssurvey.org",
     "gacebook.com",
     "gameroom.com",
+    "gaytube.com",
     "gfacecbook.com",
     "graph.org",
     "groups.com",
@@ -3379,6 +3386,11 @@
     "openaicom.imgix.net",
     "openaicomproductionae4b.blob.core.windows.net",
     "opencreate.org",
+    "phprcdn.com",
+    "porngub.com",
+    "pornhub-deutsch.net",
+    "pornhubapparel.com",
+    "pornhubpremium.com",
     "quiz.directory",
     "reachtheworldonfacebook.com",
     "redkix.com",
@@ -3598,12 +3610,12 @@
     "zuckerberg.net"
   ],
   "itdog_total": 1123,
-  "v2fly_total": 670,
-  "final_total": 1793,
+  "v2fly_total": 676,
+  "final_total": 1799,
   "truncated": 0,
   "bad_output_lines": 0,
   "truncated_yesno": "НЕТ",
-  "v2fly_ok": 8,
+  "v2fly_ok": 9,
   "v2fly_fail": 0,
   "v2fly_categories": [
     "discord",
@@ -3613,7 +3625,8 @@
     "whatsapp",
     "youtube",
     "facebook",
-    "wbgames"
+    "wbgames",
+    "pornhub"
   ],
   "v2fly_per_category": {
     "discord": {
@@ -3687,6 +3700,15 @@
       "status": "OK",
       "error": "",
       "url": "https://raw.githubusercontent.com/v2fly/domain-list-community/master/data/wbgames"
+    },
+    "pornhub": {
+      "valid_domains": 9,
+      "extras_added": 6,
+      "invalid_lines": 0,
+      "skipped_directives": 0,
+      "status": "OK",
+      "error": "",
+      "url": "https://raw.githubusercontent.com/v2fly/domain-list-community/master/data/pornhub"
     }
   },
   "warnings": [],
