@@ -1,12 +1,21 @@
-UTC: 2026-02-15T12:46:22+00:00
+UTC: 2026-02-15T13:06:41+00:00
+build_time_utc: 2026-02-15 13:06:41 UTC
 Categories file: /home/runner/work/kvas-domains/kvas-domains/src/v2fly_allow.txt
 Categories count: 8
 
-[OK]   discord -> lines=34, domains=28
-[OK]   instagram -> lines=76, domains=72
-[OK]   openai -> lines=26, domains=16
-[OK]   telegram -> lines=20, domains=20
-[OK]   whatsapp -> lines=15, domains=11
-[OK]   youtube -> lines=182, domains=175
-[OK]   facebook -> lines=402, domains=394
-[OK]   wbgames -> lines=6, domains=6
+[OK] discord -> lines=34, domains=28, invalid=0, skipped=0
+[OK] instagram -> lines=76, domains=72, invalid=2, skipped=0
+[OK] openai -> lines=26, domains=16, invalid=2, skipped=1
+[OK] telegram -> lines=20, domains=20, invalid=0, skipped=0
+[OK] whatsapp -> lines=15, domains=11, invalid=2, skipped=0
+[OK] youtube -> lines=182, domains=175, invalid=3, skipped=0
+[OK] facebook -> lines=402, domains=394, invalid=3, skipped=0
+[OK] wbgames -> lines=6, domains=6, invalid=0, skipped=0
+
+itdog: 1123
+v2fly extras: 670
+final_raw: 1793
+final_saved: 1793
+truncated: 0
+bad_output_lines: 0
+sha256_final: 9119d44f62720e22a6bcac9ec9326b829ca07e6722f8bc31f1c98632822b8e20
