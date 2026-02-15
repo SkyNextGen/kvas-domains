@@ -1,12 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""KVAS Telegram message generator (dist/tg_message.txt + dist/tg_alert.txt)."""
 
 from __future__ import annotations
 
 from typing import Dict, List, Optional, Tuple
 
-from report_common import *  # noqa: F401,F403
+from report_common import (
+    TG_MESSAGE,
+    TG_ALERT,
+    STATS_JSON,
+    STATE_JSON,
+    load_json,
+    pct,
+    short_hash,
+    classify_severity,
+    fmt_tg_date_time,
+    repo_report_url,
+    trend_eval,
+)
 
 
 def tg_header(sev: str) -> List[str]:
@@ -14,15 +25,15 @@ def tg_header(sev: str) -> List[str]:
     if sev == "ОК":
         src = "🟢 GitHub Actions"
         tag = "ℹ️ INFO"
-        pr = "ПРИОРИТЕТ: НИЗКИЙ"
+        pr = "🟢 ПРИОРИТЕТ: НИЗКИЙ"
     elif sev == "ПРЕДУПРЕЖДЕНИЕ":
-        src = "🟠 GitHub Actions"
+        src = "🟡 GitHub Actions"
         tag = "⚠️ WARNING"
-        pr = "ПРИОРИТЕТ: СРЕДНИЙ"
+        pr = "🟡 ПРИОРИТЕТ: СРЕДНИЙ"
     else:
         src = "🔴 GitHub Actions"
-        tag = "🧨 ERROR"
-        pr = "ПРИОРИТЕТ: ВЫСОКИЙ"
+        tag = "🚨 CRITICAL"
+        pr = "🔴 ПРИОРИТЕТ: ВЫСОКИЙ"
     return [
         "📦 BUILD SYSTEM",
         src,
@@ -34,103 +45,96 @@ def tg_header(sev: str) -> List[str]:
     ]
 
 
+def tg_problems_lines(state: Dict) -> List[str]:
+    lines: List[str] = []
+    failed = state.get("failed_categories") or []
+    empty = state.get("empty_categories") or []
+
+    for f in failed:
+        name = str(f)
+        if "HTTP" in name:
+            # "tiktok (HTTP 404)" -> "🔴 tiktok — 404"
+            cat = name.split("(", 1)[0].strip()
+            tail = name.split("HTTP", 1)[1].strip().strip("()")
+            code = tail.split()[0]
+            lines.append(f"🔴 {cat} — {code}")
+        else:
+            cat = name.split("(", 1)[0].strip()
+            lines.append(f"🔴 {cat} — ошибка")
+
+    for e in empty:
+        lines.append(f"🟡 {e} — пусто")
+
+    max_lines = int(state.get("max_lines", 3000))
+    threshold = int(state.get("near_limit_threshold", 2900))
+    total = int(state.get("final_total", 0))
+    p = pct(total, max_lines)
+    if total >= threshold or p >= 96.0:
+        lines.append("🟠 Почти лимит")
+
+    trunc = int(state.get("truncated", 0))
+    if trunc > 0:
+        lines.append(f"🔴 Обрезка — {trunc}")
+
+    bad = int(state.get("bad_output_lines", 0))
+    if bad > 0:
+        lines.append(f"🔴 Некорректные строки — {bad}")
+
+    return lines
+
+
 def format_tg(state: Dict, stats: List[Dict], prev_rec: Optional[Dict]) -> Tuple[str, str]:
-    repo = str(state.get("repo", "unknown/unknown"))
-    build_time_s = fmt_tg_date_time(str(state.get("build_time_utc", "")))
-
-    final_total = int(state.get("final_total", 0) or 0)
-    max_lines = int(state.get("max_lines", 0) or 0)
-    threshold = int(state.get("near_limit_threshold", 0) or 0)
-
-    itdog_total = int(state.get("itdog_total", 0) or 0)
-    v2fly_total = int(state.get("v2fly_total", 0) or 0)
-
-    trunc = int(state.get("truncated", 0) or 0)
-    bad = int(state.get("bad_output_lines", 0) or 0)
-
-    v2_ok = int(state.get("v2fly_ok", 0) or 0)
-    v2_fail = int(state.get("v2fly_fail", 0) or 0)
-
-    warns = state.get("warnings", []) or []
-    failed = state.get("failed_categories", []) or []
-    empty = state.get("empty_categories", []) or []
-
     sev = classify_severity(state)
-    trend = trend_eval(prev_rec, state)
+    date_s, time_s = fmt_tg_date_time(str(state.get("build_time_utc", "")))
 
-    def fdelta(x):
-        if x is None:
-            return "—"
-        if x > 0:
-            return f"+{x}"
-        return str(x)
+    max_lines = int(state.get("max_lines", 3000))
+    total = int(state.get("final_total", 0))
+    p = pct(total, max_lines)
+    rest = max_lines - total
 
-    report_url = repo_report_url(repo)
-    report_line = report_url if report_url else "(report.md link недоступен)"
+    sha = short_hash(str(state.get("sha256_final", "")))
+    url = repo_report_url(str(state.get("repo", "")))
 
-    # Base message (always sent)
-    msg_lines = []
-    msg_lines += tg_header(sev)
-    msg_lines += [
-        f"🕒 {build_time_s}",
-        f"📌 Repo: {repo}",
+    avg7, delta, deviation, eval_line = trend_eval(stats, prev_rec, total)
+    problems = tg_problems_lines(state)
+
+    hdr = tg_header(sev)
+
+    badge = "🟢" if p < 85.0 else ("🟡" if p < 96.0 else "🔴")
+    msg = []
+    msg.extend(hdr)
+
+    if not problems:
+        msg += ["🚀 Сборка завершена", "🟢 Система стабильна", ""]
+    else:
+        msg += ["⚠️ Есть замечания", "", "Проблемы:"]
+        msg += [f"- {x}" for x in problems]
+        msg += [""]
+
+    msg += [
+        f"🗓 {date_s}",
+        f"🕒 {time_s}",
         "",
-        "📊 Итоги:",
-        f"• final: {final_total} (Δ {fdelta(trend.get('final_delta'))})",
-        f"• itdog: {itdog_total} (Δ {fdelta(trend.get('itdog_delta'))})",
-        f"• v2fly: {v2fly_total} (Δ {fdelta(trend.get('v2fly_delta'))})",
-        f"• лимит: {limit_badge(final_total, max_lines, threshold)}",
+        f"📊 {total} / {max_lines} ({p:.1f}%) {badge}",
         "",
-        "✅ Проверки:",
-        f"• v2fly categories: OK={v2_ok} / FAIL={v2_fail}",
-        f"• bad lines: {bad}",
-        f"• truncated: {trunc}",
+        "📈 ТРЕНД",
+        f"Среднее (7): {avg7}",
+        f"Δ к прошлой: {delta:+d}",
+        eval_line,
         "",
-        f"📝 Report: {report_line}",
+        "✅ Замечаний нет" if not problems else "⚠️ Есть замечания",
+        "",
+        f"🔐 sha256: {sha}",
     ]
-
-    tg_message = "\n".join(msg_lines).rstrip() + "\n"
-
-    # Alert message (only if WARNING/ERROR)
-    alert_lines: List[str] = []
-    if sev != "ОК":
-        alert_lines += tg_header(sev)
-        alert_lines += [
-            f"🕒 {build_time_s}",
-            f"📌 Repo: {repo}",
-            "",
-        ]
-        if failed:
-            alert_lines.append("❌ Failed categories:")
-            alert_lines += [f"• {c}" for c in failed[:50]]
-            if len(failed) > 50:
-                alert_lines.append(f"• …ещё {len(failed)-50}")
-            alert_lines.append("")
-        if empty:
-            alert_lines.append("🟡 Empty categories:")
-            alert_lines += [f"• {c}" for c in empty[:50]]
-            if len(empty) > 50:
-                alert_lines.append(f"• …ещё {len(empty)-50}")
-            alert_lines.append("")
-        if warns:
-            alert_lines.append("⚠️ Warnings:")
-            alert_lines += [f"• {w}" for w in warns[:50]]
-            if len(warns) > 50:
-                alert_lines.append(f"• …ещё {len(warns)-50}")
-            alert_lines.append("")
-
-        alert_lines.append(f"📝 Report: {report_line}")
-
-    tg_alert = "\n".join(alert_lines).rstrip() + "\n" if alert_lines else ""
-    return tg_message, tg_alert
+    if url:
+        msg.append(f"🔗 Отчёт: {url}")
+    return "\n".join(msg).rstrip() + "\n", ""
 
 
 def main() -> int:
-    DIST.mkdir(parents=True, exist_ok=True)
-
-    state = ensure_state()
-
-    # Standalone mode: no append (to avoid двойной append in workflow).
+    state = load_json(STATE_JSON, {})
+    if not isinstance(state, dict):
+        state = {}
     stats = load_json(STATS_JSON, [])
     if not isinstance(stats, list):
         stats = []
@@ -138,6 +142,7 @@ def main() -> int:
 
     tg_msg, tg_alert = format_tg(state, stats, prev_rec)
     TG_MESSAGE.write_text(tg_msg, encoding="utf-8")
+
     if tg_alert.strip():
         TG_ALERT.write_text(tg_alert, encoding="utf-8")
     else:
