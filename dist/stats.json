@@ -14,5 +14,12 @@
     "warnings": [
       "v2fly: нет файла src/v2fly_categories.txt (v2fly пропущен)"
     ]
+  },
+  {
+    "ts_utc": "2026-02-15T06:20:15+00:00",
+    "total": 1793,
+    "itdog": 1123,
+    "v2fly": 670,
+    "warnings": []
   }
 ]

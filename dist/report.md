@@ -1,16 +1,35 @@
-UTC: 2026-02-15T06:15:00+00:00
+UTC: 2026-02-15T06:20:13+00:00
 
-- Итог: 1123 (Δ +0)
+- Итог: 1793 (Δ +670)
 - itdog новых: 0
-- v2fly новых: 0
+- v2fly новых: 670
 
 ## Предупреждения
 
-v2fly: нет файла src/v2fly_categories.txt (v2fly пропущен)
+нет
 
 ## Топ добавленных
 
-нет
+aboutfacebook.com
+accessfacebookfromschool.com
+acebooik.com
+acebook.com
+achat-followers-instagram.com
+acheter-followers-instagram.com
+acheterdesfollowersinstagram.com
+acheterfollowersinstagram.com
+advancediddetection.com
+airhorn.solutions
+airhornbot.com
+askfacebook.net
+askfacebook.org
+atdmt2.com
+atlasdmt.com
+atlasonepoint.com
+bigbeans.solutions
+bookstagram.com
+buyingfacebooklikes.com
+careersatfb.com
 
 ## Топ удалённых
 
@@ -18,7 +37,7 @@ v2fly: нет файла src/v2fly_categories.txt (v2fly пропущен)
 
 ## Рост за всё время
 
-- Билдов: 2
+- Билдов: 3
 - Минимум: 1123
-- Максимум: 1123
-- Рост с первого: +0
+- Максимум: 1793
+- Рост с первого: +670
