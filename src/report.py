@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+trend_eval_line = "➡ Недостаточно данных"  # safe default
 # -*- coding: utf-8 -*-
 
 from __future__ import annotations
