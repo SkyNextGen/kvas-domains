@@ -3,8 +3,7 @@ name: build-kvas-list
 on:
   workflow_dispatch:
   schedule:
-    # 03:15 МСК = 00:15 UTC
-    - cron: "15 0 * * 2"
+    - cron: "0 */6 * * *"
 
 permissions:
   contents: write
@@ -22,6 +21,11 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
       - name: Run builder + report
         run: |
           python src/build.py
@@ -30,59 +34,65 @@ jobs:
       - name: Commit dist
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "github-actions@users.noreply.github.com"
-
-          git add -A dist
-
-          if git diff --cached --quiet; then
-            echo "No changes"
-            exit 0
-          fi
-
-          git commit -m "Update domain lists"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add dist/
+          git diff --cached --quiet || git commit -m "Update domain lists"
           git push
 
       - name: Notify Telegram (report)
-        if: success()
+        if: always()
         env:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
-          if [ -z "$TG_BOT_TOKEN" ] || [ -z "$TG_CHAT_ID" ]; then
-            echo "Telegram secrets missing"
-            exit 0
-          fi
+          python - << 'PY'
+          import os, pathlib, requests
+          token = os.environ["TG_BOT_TOKEN"]
+          chat_id = os.environ["TG_CHAT_ID"]
 
-          if [ -f dist/tg_message.txt ]; then
-            CAPTION="$(cat dist/tg_message.txt)"
-          else
-            CAPTION="KVAS Domains — сборка завершена"
-          fi
+          caption_path = pathlib.Path("dist/tg_message.txt")
+          report_path = pathlib.Path("dist/report.md")
 
-          curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendDocument" \
-            -F chat_id="$TG_CHAT_ID" \
-            -F document=@dist/report.md \
-            -F caption="$CAPTION" >/dev/null || true
+          if not caption_path.exists() or not report_path.exists():
+              raise SystemExit("Telegram files missing")
+
+          caption = caption_path.read_text(encoding="utf-8")
+
+          url = f"https://api.telegram.org/bot{token}/sendDocument"
+          with report_path.open("rb") as f:
+              requests.post(url, data={
+                  "chat_id": chat_id,
+                  "caption": caption,
+                  "disable_web_page_preview": "true"
+              }, files={"document": f})
+          PY
 
       - name: Notify Telegram (alerts)
-        if: success()
+        if: always()
         env:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
-          if [ -z "$TG_BOT_TOKEN" ] || [ -z "$TG_CHAT_ID" ]; then
-            echo "Telegram secrets missing"
-            exit 0
-          fi
+          python - << 'PY'
+          import os, pathlib, requests
+          token = os.environ["TG_BOT_TOKEN"]
+          chat_id = os.environ["TG_CHAT_ID"]
 
-          if [ ! -f dist/tg_alert.txt ]; then
-            echo "No alerts"
-            exit 0
-          fi
+          alert_path = pathlib.Path("dist/tg_alert.txt")
+          if not alert_path.exists():
+              raise SystemExit(0)
 
-          curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
-            -d chat_id="$TG_CHAT_ID" \
-            --data-urlencode text="$(cat dist/tg_alert.txt)" >/dev/null || true
+          text = alert_path.read_text(encoding="utf-8").strip()
+          if not text:
+              raise SystemExit(0)
+
+          url = f"https://api.telegram.org/bot{token}/sendMessage"
+          requests.post(url, data={
+              "chat_id": chat_id,
+              "text": text,
+              "disable_web_page_preview": "true"
+          })
+          PY
 
       - name: Notify Telegram (failure)
         if: failure()
@@ -90,15 +100,15 @@ jobs:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
-          if [ -z "$TG_BOT_TOKEN" ] || [ -z "$TG_CHAT_ID" ]; then
-            echo "Telegram secrets missing"
-            exit 0
-          fi
+          python - << 'PY'
+          import os, requests
+          token = os.environ["TG_BOT_TOKEN"]
+          chat_id = os.environ["TG_CHAT_ID"]
 
-          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-
-          MSG=$'🚨 KVAS Domains — сборка упала ❌\n\n🔎 Подробности:\n'"$RUN_URL"
-
-          curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
-            -d chat_id="$TG_CHAT_ID" \
-            --data-urlencode "text=${MSG}" >/dev/null || true
+          url = f"https://api.telegram.org/bot{token}/sendMessage"
+          text = "🚨 Workflow упал до формирования отчёта. Проверь GitHub Actions."
+          requests.post(url, data={
+              "chat_id": chat_id,
+              "text": text
+          })
+          PY
