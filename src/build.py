@@ -44,7 +44,7 @@ DEFAULT_NEAR_LIMIT = 2900
 
 # Sources
 ITDOG_URL = "https://raw.githubusercontent.com/itdoginfo/allow-domains/main/Russia/inside-kvas.lst"
-V2FLY_BASE = "https://ra.githubusercontent.com/v2fly/domain-list-community/master/data/{cat}"
+V2FLY_BASE = "https://raw.githubusercontent.com/v2fly/domain-list-community/master/data/{cat}"
 
 DOMAIN_RE = re.compile(
     r"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9-]{2,63}$",
