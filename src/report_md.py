@@ -1,136 +1,245 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""KVAS Markdown report generator (dist/report.md)."""
 
 from __future__ import annotations
 
 from typing import Dict, List, Optional
 
-from report_common import *  # noqa: F401,F403
+from report_common import (
+    STATE_JSON,
+    REPORT_MD,
+    load_json,
+    pct,
+    limit_badge,
+    short_hash,
+    status_emoji,
+    diff_lists,
+    fmt_build_time_msk,
+    trend_eval,
+    repo_report_url,
+)
 
 
 def format_report_md(state: Dict, stats: List[Dict], prev_rec: Optional[Dict]) -> str:
-    repo = str(state.get("repo", "unknown/unknown"))
     build_time = fmt_build_time_msk(str(state.get("build_time_utc", "")))
-    out = str(state.get("output", "dist/inside-kvas.lst"))
+    repo = str(state.get("repo", "unknown/unknown"))
+    output = str(state.get("output", "dist/inside-kvas.lst"))
 
-    final_total = int(state.get("final_total", 0) or 0)
-    max_lines = int(state.get("max_lines", 0) or 0)
-    threshold = int(state.get("near_limit_threshold", 0) or 0)
+    max_lines = int(state.get("max_lines", 3000))
+    threshold = int(state.get("near_limit_threshold", 2900))
 
-    itdog_total = int(state.get("itdog_total", 0) or 0)
-    v2fly_total = int(state.get("v2fly_total", 0) or 0)
-    trunc = int(state.get("truncated", 0) or 0)
-    bad = int(state.get("bad_output_lines", 0) or 0)
+    itdog_total = int(state.get("itdog_total", 0))
+    v2_total = int(state.get("v2fly_total", 0))
+    final_total = int(state.get("final_total", 0))
 
-    v2_ok = int(state.get("v2fly_ok", 0) or 0)
-    v2_fail = int(state.get("v2fly_fail", 0) or 0)
+    trunc = int(state.get("truncated", 0))
+    bad = int(state.get("bad_output_lines", 0))
 
-    warns = state.get("warnings", []) or []
-    failed = state.get("failed_categories", []) or []
-    empty = state.get("empty_categories", []) or []
+    v2_ok = int(state.get("v2fly_ok", 0))
+    v2_fail = int(state.get("v2fly_fail", 0))
+    cats = state.get("v2fly_categories") or []
+    empty_cats = state.get("empty_categories") or []
+    failed_cats = state.get("failed_categories") or []
+    warns = state.get("warnings") or []
 
+    # diffs (top 20 shown in <details>)
+    prev = state.get("prev") if isinstance(state.get("prev"), dict) else {}
+    itd_prev = prev.get("itdog_domains") or []
+    v2_prev = prev.get("v2fly_extras") or []
+    fin_prev = prev.get("final_domains") or []
+
+    itd_curr = state.get("itdog_domains") or []
+    v2_curr = state.get("v2fly_extras") or []
+    fin_curr = state.get("final_domains") or []
+
+    itd_add, itd_del = diff_lists(itd_prev, itd_curr)
+    v2_add, v2_del = diff_lists(v2_prev, v2_curr)
+    fin_add, fin_del = diff_lists(fin_prev, fin_curr)
+
+    def top20(items: List[str]) -> List[str]:
+        return items[:20]
+
+    # Metrics
+    p = pct(final_total, max_lines)
+    badge = limit_badge(p)
+    reserve = max_lines - final_total
+    near = (final_total >= threshold)
+    url = repo_report_url(repo)
     sha = short_hash(str(state.get("sha256_final", "")))
-    sev = classify_severity(state)
 
-    trend = trend_eval(prev_rec, state)
+    # Diagnostics
+    risk = "низкий 🟢" if p < 85.0 else ("средний 🟡" if p < 96.0 else "высокий 🔴")
+    avg7, delta, deviation, eval_line = trend_eval(stats, prev_rec, final_total)
 
-    report_url = repo_report_url(repo)
-    report_link = report_url if report_url else "—"
-
-    # delta formatting
-    def fdelta(x):
-        if x is None:
-            return "—"
-        if x > 0:
-            return f"+{x}"
-        return str(x)
-
-    lines = []
-    lines.append(f"# KVAS report — {build_time}")
-    lines.append("")
-    lines.append(f"**Repo:** `{repo}`  ")
-    lines.append(f"**Output:** `{out}`  ")
-    lines.append(f"**Report link:** {report_link}")
-    lines.append("")
-    lines.append("## Статус")
-    if sev == "ОК":
-        lines.append("✅ **ОК**")
-    elif sev == "ПРЕДУПРЕЖДЕНИЕ":
-        lines.append("⚠️ **ПРЕДУПРЕЖДЕНИЕ**")
-    else:
-        lines.append("🧨 **ОШИБКА**")
-    lines.append("")
-    lines.append("## Итоги")
-    lines.append(f"- **Итого доменов:** `{final_total}` (Δ {fdelta(trend.get('final_delta'))})")
-    lines.append(f"- itdog: `{itdog_total}` (Δ {fdelta(trend.get('itdog_delta'))})")
-    lines.append(f"- v2fly extras: `{v2fly_total}` (Δ {fdelta(trend.get('v2fly_delta'))})")
-    lines.append(f"- лимит: {limit_badge(final_total, max_lines, threshold)}")
-    lines.append(f"- sha256: `{sha}`")
-    lines.append("")
-    lines.append("## Проверки")
-    lines.append(f"- v2fly categories: ✅ `{v2_ok}` / ❌ `{v2_fail}`")
-    lines.append(f"- bad lines: `{bad}`")
-    lines.append(f"- truncated: `{trunc}`")
-    lines.append("")
-
+    # Problems list (for report)
+    problems: List[str] = []
+    if failed_cats:
+        problems.append("🔴 Категории не скачались/не распарсились: " + ", ".join(failed_cats))
+    if empty_cats:
+        problems.append("🟡 Пустые категории (0 доменов): " + ", ".join(empty_cats))
+    if near:
+        problems.append("🟠 Почти лимит")
+    if trunc > 0:
+        problems.append(f"🔴 Обрезка по лимиту — {trunc} строк")
+    if bad > 0:
+        problems.append(f"🔴 Некорректные строки — {bad}")
     if warns:
-        lines.append("## Warnings")
-        for w in warns:
-            lines.append(f"- ⚠️ {w}")
-        lines.append("")
+        problems.append("⚠️ " + " / ".join(warns))
 
-    if failed:
-        lines.append("## Failed categories")
-        for c in failed:
-            lines.append(f"- ❌ `{c}`")
-        lines.append("")
-
-    if empty:
-        lines.append("## Empty categories")
-        for c in empty:
-            lines.append(f"- 🟡 `{c}`")
-        lines.append("")
-
-    # details blocks for lists (optional)
-    itdog_list = state.get("itdog_domains", []) or []
-    v2fly_list = state.get("v2fly_extras", []) or []
-    final_list = state.get("final_domains", []) or []
-
-    lines.append("## Списки")
-    lines.append("")
-    lines.append("<details><summary>itdog domains</summary>\n")
-    lines.append("\n".join([f"- {d}" for d in itdog_list[:2000]] or ["- —"]))
-    if len(itdog_list) > 2000:
-        lines.append(f"\n- …ещё {len(itdog_list) - 2000}")
-    lines.append("\n</details>\n")
-
-    lines.append("<details><summary>v2fly extras</summary>\n")
-    lines.append("\n".join([f"- {d}" for d in v2fly_list[:2000]] or ["- —"]))
-    if len(v2fly_list) > 2000:
-        lines.append(f"\n- …ещё {len(v2fly_list) - 2000}")
-    lines.append("\n</details>\n")
-
-    lines.append("<details><summary>final domains</summary>\n")
-    lines.append("\n".join([f"- {d}" for d in final_list[:2000]] or ["- —"]))
-    if len(final_list) > 2000:
-        lines.append(f"\n- …ещё {len(final_list) - 2000}")
-    lines.append("\n</details>\n")
-
-    return "\n".join(lines).rstrip() + "\n"
+    # Title block
+    L: List[str] = []
+    L.append("# 📊 Отчёт сборки доменов KVAS")
+    L.append("")
+    L.append("## 🧭 Общая информация")
+    L.append("")
+    L.append(f"> 🕒 **Сборка:** {build_time}  ")
+    L.append(f"> 📦 **Репозиторий:** {repo}  ")
+    L.append(f"> 📄 **Выходной файл:** `{output}`  ")
+    L.append(f"> 📏 Лимит строк: **{max_lines}**")
+    if url:
+        L.append(f"> 🔗 Отчёт: {url}")
+    L.append("")
+    L.append("---")
+    L.append("")
+    L.append("## 🧮 Итог сборки")
+    L.append("")
+    L.append(f"> ### 📊 {final_total} / {max_lines} ({p:.1f}%) {badge}")
+    L.append(f"> **Запас:** {reserve} строк  ")
+    L.append(f"> **Обрезка:** {'ДА' if trunc > 0 else 'НЕТ'}  ")
+    L.append(f"> **Некорректных строк:** {bad}")
+    L.append("")
+    L.append("---")
+    L.append("")
+    L.append("## 🚦 Статус")
+    L.append("")
+    if not problems:
+        L.append("### ✅ Сборка завершена")
+        L.append("✅ Замечаний нет")
+    else:
+        L.append("### ⚠️ Есть замечания")
+        for p_line in problems:
+            L.append(f"- {p_line}")
+    L.append("")
+    L.append("---")
+    L.append("")
+    L.append("## 🧩 V2Fly категории")
+    L.append("")
+    if cats:
+        L.append("| Категория | Вход | Итог | uniq | пересеч. | Статус |")
+        L.append("|---|---:|---:|---:|---:|---|")
+        per = state.get("v2fly_per_category") or {}
+        for c in cats:
+            rec = per.get(c) if isinstance(per, dict) else None
+            if not isinstance(rec, dict):
+                rec = {}
+            src = int(rec.get("source", 0))
+            outn = int(rec.get("output", 0))
+            uniq = int(rec.get("uniq", 0))
+            inter = int(rec.get("intersect", 0))
+            st = status_emoji(str(rec.get("status", "")))
+            L.append(f"| {c} | {src} | {outn} | {uniq} | {inter} | {st} |")
+    else:
+        L.append("> нет данных по категориям")
+    L.append("")
+    L.append("---")
+    L.append("")
+    L.append("## 🔐 Хеш")
+    L.append("")
+    L.append(f"> sha256(final): **{sha}**")
+    L.append("")
+    L.append("---")
+    L.append("")
+    L.append("<details>")
+    L.append("<summary>🔄 Изменения (топ 20)</summary>")
+    L.append("")
+    L.append("### itd")
+    L.append("**➕ Добавлено**")
+    if itd_add:
+        for x in top20(itd_add):
+            L.append(f"- {x}")
+    else:
+        L.append("- —")
+    L.append("")
+    L.append("**➖ Удалено**")
+    if itd_del:
+        for x in top20(itd_del):
+            L.append(f"- {x}")
+    else:
+        L.append("- —")
+    L.append("")
+    L.append("---")
+    L.append("")
+    L.append("### v2fly extras")
+    L.append("**➕ Добавлено**")
+    if v2_add:
+        for x in top20(v2_add):
+            L.append(f"- {x}")
+    else:
+        L.append("- —")
+    L.append("")
+    L.append("**➖ Удалено**")
+    if v2_del:
+        for x in top20(v2_del):
+            L.append(f"- {x}")
+    else:
+        L.append("- —")
+    L.append("")
+    L.append("---")
+    L.append("")
+    L.append("### final")
+    L.append("**➕ Добавлено**")
+    if fin_add:
+        for x in top20(fin_add):
+            L.append(f"- {x}")
+    else:
+        L.append("- —")
+    L.append("")
+    L.append("**➖ Удалено**")
+    if fin_del:
+        for x in top20(fin_del):
+            L.append(f"- {x}")
+    else:
+        L.append("- —")
+    L.append("")
+    L.append("---")
+    L.append("")
+    L.append("### 🧪 Диагностика")
+    L.append(f"- источник itdog: **{itdog_total}** домена (уник.)")
+    L.append(f"- v2fly extras: **{v2_total}** доменов (после вычитания пересечений)")
+    L.append(f"- итог до лимита: **{final_total}** строк")
+    L.append(f"- запас до лимита: **{reserve}** строк")
+    L.append(f"- риск переполнения лимита: **{risk}**")
+    L.append("")
+    L.append("### 📈 Тренд")
+    L.append(f"- Среднее (7): **{avg7}**")
+    L.append(f"- Δ к прошлой: **{delta:+d}**")
+    L.append(f"- Отклонение: **{deviation:+d}**")
+    L.append(f"- {eval_line}")
+    L.append("")
+    L.append("### 🧠 v2fly здоровье")
+    L.append(f"- fail={v2_fail} 🔴")
+    L.append(f"- empty={len(empty_cats)} 🟡")
+    L.append("")
+    L.append("### ✅ Рекомендации")
+    if problems:
+        for p_line in problems:
+            L.append(f"- {p_line}")
+    else:
+        L.append("- отсутствуют")
+    L.append("")
+    L.append("</details>")
+    L.append("")
+    return "\n".join(L).rstrip() + "\n"
 
 
 def main() -> int:
-    DIST.mkdir(parents=True, exist_ok=True)
-
-    state = ensure_state()
-
-    # Standalone mode: no append (to avoid двойной append in workflow).
-    stats = load_json(STATS_JSON, [])
+    state = load_json(STATE_JSON, {})
+    if not isinstance(state, dict):
+        state = {}
+    stats = load_json(Path("dist/stats.json"), [])
     if not isinstance(stats, list):
         stats = []
     prev_rec = stats[-2] if len(stats) >= 2 and isinstance(stats[-2], dict) else None
-
     REPORT_MD.write_text(format_report_md(state, stats, prev_rec), encoding="utf-8")
     return 0
 
