@@ -1,7 +1,3 @@
-UTC: 2026-02-15T06:20:13+00:00
-Categories file: /home/runner/work/kvas-domains/kvas-domains/src/v2fly_allow.txt
-Categories count: 8
-
 [OK]   discord -> lines=34, domains=28
 [OK]   instagram -> lines=76, domains=72
 [OK]   openai -> lines=26, domains=16

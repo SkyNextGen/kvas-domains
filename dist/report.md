@@ -1,8 +1,22 @@
-UTC: 2026-02-15T06:20:13+00:00
+MSK: 2026-02-15T09:36:52+03:00
+UTC: 2026-02-15T06:36:52+00:00
 
-- Итог: 1793 (Δ +670)
-- itdog новых: 0
+- Итог: 1793 (Δ —)
+- itdog новых: 1123
 - v2fly новых: 670
+
+## v2fly (по категориям)
+
+| Категория | Статус | Доменов | Примечание |
+|---|---:|---:|---|
+| `discord` | OK | 28 |  |
+| `instagram` | OK | 72 |  |
+| `openai` | OK | 16 |  |
+| `telegram` | OK | 20 |  |
+| `whatsapp` | OK | 11 |  |
+| `youtube` | OK | 175 |  |
+| `facebook` | OK | 394 |  |
+| `wbgames` | OK | 6 |  |
 
 ## Предупреждения
 
@@ -10,26 +24,26 @@ UTC: 2026-02-15T06:20:13+00:00
 
 ## Топ добавленных
 
+10minutemail.com
+1337x.to
+24.kg
+4freerussia.org
+4pda.to
+4pda.ws
+4pna.com
+5sim.net
+7dniv.rv.ua
+7tv.app
+7tv.io
+9tv.co.il
+a-vrv.akamaized.net
+abercrombie.com
+abook-club.ru
 aboutfacebook.com
+academy.terrasoft.ua
 accessfacebookfromschool.com
 acebooik.com
 acebook.com
-achat-followers-instagram.com
-acheter-followers-instagram.com
-acheterdesfollowersinstagram.com
-acheterfollowersinstagram.com
-advancediddetection.com
-airhorn.solutions
-airhornbot.com
-askfacebook.net
-askfacebook.org
-atdmt2.com
-atlasdmt.com
-atlasonepoint.com
-bigbeans.solutions
-bookstagram.com
-buyingfacebooklikes.com
-careersatfb.com
 
 ## Топ удалённых
 
@@ -37,7 +51,7 @@ careersatfb.com
 
 ## Рост за всё время
 
-- Билдов: 3
-- Минимум: 1123
+- Билдов: 1
+- Минимум: 1793
 - Максимум: 1793
-- Рост с первого: +670
+- Рост с первого: +0
