@@ -23,7 +23,7 @@ ITDOG_URL = "https://raw.githubusercontent.com/itdoginfo/allow-domains/main/Russ
 
 # v2fly (категории -> data/<category>)
 V2FLY_DATA_BASE = "https://raw.githubusercontent.com/v2fly/domain-list-community/master/data"
-V2FLY_CATEGORIES_FILE = SRC_DIR / "v2fly_categories.txt"
+V2FLY_CATEGORIES_FILE = SRC_DIR / "v2fly_allow.txt"
 
 # Итог и отчёты
 FINAL_OUT = DIST_DIR / "inside-kvas.lst"
