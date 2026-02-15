@@ -96,5 +96,15 @@
     "itdog": 1123,
     "v2fly": 670,
     "warnings": []
+  },
+  {
+    "ts_utc": "2026-02-15T13:27:21Z",
+    "total": 1793,
+    "itdog": 1123,
+    "v2fly": 670,
+    "severity": "ОК",
+    "warnings": [],
+    "failed_categories": [],
+    "empty_categories": []
   }
 ]
