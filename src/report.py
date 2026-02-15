@@ -281,8 +281,11 @@ def main() -> int:
     completion_line = build_completion_line(has_errors, has_warnings)
     system_line = build_system_line(system_level)
 
+    # В отчёте показываем фактическое время текущего запуска (МСК),
+    # а не timestamp из state.json (он может обновляться не на каждом билде).
     build_time_utc = str(state.get("build_time_utc", "")).replace(" UTC", "")
-    build_time_msk = format_build_time_msk_from_state(build_time_utc)
+    dt_run_msk = now_msk_dt()
+    build_time_msk = f"{dt_run_msk.day:02d} {MONTHS_RU[dt_run_msk.month - 1]} {dt_run_msk.year}, {dt_run_msk:%H:%M} МСК"
 
     sha = short_hash(str(state.get("sha256_final", "")))
 
