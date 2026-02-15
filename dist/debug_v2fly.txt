@@ -1,14 +1,13 @@
 v2fly debug
-cats: discord, instagram, openai, telegram, whatsapp, youtube, facebook, wbgames, pornhub, ubisoft, sdgdhsdrjdjy
+cats: discord, instagram, openai, telegram, whatsapp, youtube, facebook, wbgames, pornhub, ubisoft
 
-[discord] status=OK valid=28 invalid=0 skipped=0
-[instagram] status=OK valid=72 invalid=2 skipped=0
-[openai] status=OK valid=16 invalid=2 skipped=1
-[telegram] status=OK valid=20 invalid=0 skipped=0
-[whatsapp] status=OK valid=11 invalid=2 skipped=0
-[youtube] status=OK valid=175 invalid=3 skipped=0
-[facebook] status=OK valid=394 invalid=3 skipped=0
-[wbgames] status=OK valid=6 invalid=0 skipped=0
-[pornhub] status=OK valid=9 invalid=0 skipped=0
-[ubisoft] status=OK valid=31 invalid=1 skipped=0
-[sdgdhsdrjdjy] status=FAIL error=HTTP 404
+[discord] status=FAIL error=HTTP 500
+[instagram] status=FAIL error=HTTP 500
+[openai] status=FAIL error=HTTP 500
+[telegram] status=FAIL error=HTTP 500
+[whatsapp] status=FAIL error=HTTP 500
+[youtube] status=FAIL error=HTTP 500
+[facebook] status=FAIL error=HTTP 500
+[wbgames] status=FAIL error=HTTP 500
+[pornhub] status=FAIL error=HTTP 500
+[ubisoft] status=FAIL error=HTTP 500

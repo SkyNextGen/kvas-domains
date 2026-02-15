@@ -8,21 +8,29 @@
 ⚠️ Обнаружены замечания
 
 🔎 Проблемы:
-• ❌ sdgdhsdrjdjy — HTTP 404
-• 🟠 Почти лимит
+• ❌ discord — HTTP 500
+• ❌ instagram — HTTP 500
+• ❌ openai — HTTP 500
+• ❌ telegram — HTTP 500
+• ❌ whatsapp — HTTP 500
+• ❌ youtube — HTTP 500
+• ❌ facebook — HTTP 500
+• ❌ wbgames — HTTP 500
+• ❌ pornhub — HTTP 500
+• ❌ ubisoft — HTTP 500
 
 🗓 Дата: 15.02.2026
-🕒 Время: 21:54:20 МСК
+🕒 Время: 21:56:32 МСК
 
 📊 Использование лимита:
-1830 / 1850 (98.9%) 🔴
+1123 / 1850 (60.7%) 🟢
 
 📈 ТРЕНД ЗА 7 ЗАПУСКОВ
-Среднее: 1830
-Δ к прошлой: +0
-➡️ Стабильно
+Среднее: 1729
+Δ к прошлой: -707
+📉 Падение
 
 ⚠️ Требуется внимание
 
-🔐 sha256: d5e8…7108
+🔐 sha256: 99a7…6c1b
 🔗 Отчёт: https://github.com/SkyNextGen/kvas-domains/blob/main/dist/report.md
