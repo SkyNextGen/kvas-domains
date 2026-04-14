@@ -2,7 +2,7 @@
 
 ## 🧭 Общая информация
 
-> 🕒 **Сборка:** 07 апр 2026, 06:31 МСК  
+> 🕒 **Сборка:** 14 апр 2026, 06:43 МСК  
 > 📦 **Репозиторий:** SkyNextGen/kvas-domains  
 > 📄 **Выходной файл:** `dist/inside-kvas.lst`  
 > 📏 Лимит строк: **3000**
@@ -12,8 +12,8 @@
 
 ## 🧮 Итог сборки
 
-> ### 📊 1830 / 3000 (61.0%) 🟢
-> **Запас:** 1170 строк  
+> ### 📊 1867 / 3000 (62.2%) 🟢
+> **Запас:** 1133 строк  
 > **Обрезка:** НЕТ  
 > **Некорректных строк:** 0
 
@@ -32,13 +32,13 @@
 
 ### 🗂 itdog
 
-- Всего доменов: **1123**
-- Изменение: **+0 / -0**
+- Всего доменов: **1161**
+- Изменение: **+40 / -2**
 
 ### 🌐 v2fly (extras)
 
-- Всего extras: **707**
-- Изменение: **+0 / -0**
+- Всего extras: **706**
+- Изменение: **+0 / -1**
 - Категорий: **10**
 
 🟢 OK: 10  
@@ -47,15 +47,15 @@
 
 ### 📦 Итоговый список
 
-- Всего: **1830**
-- Изменение: **+0 / -0**
+- Всего: **1867**
+- Изменение: **+39 / -2**
 - Обрезано: **0**
 
 ---
 
 ## 📈 Использование лимита
 
-### 📊 1830 / 3000 (61.0%) 🟢
+### 📊 1867 / 3000 (62.2%) 🟢
 
 🟢 до 85% — нормально  
 🟡 85–96% — внимание  
@@ -76,7 +76,7 @@
 | whatsapp | 11 | 8 | 2 | 0 | 🟢 |
 | youtube | 175 | 162 | 3 | 0 | 🟢 |
 | facebook | 394 | 389 | 3 | 0 | 🟢 |
-| wbgames | 6 | 5 | 0 | 0 | 🟢 |
+| wbgames | 6 | 4 | 0 | 0 | 🟢 |
 | pornhub | 9 | 6 | 0 | 0 | 🟢 |
 | ubisoft | 31 | 31 | 1 | 0 | 🟢 |
 
@@ -84,7 +84,7 @@
 
 ## 🔐 Хеш
 
-> sha256(final): **d5e8…7108**
+> sha256(final): **03db…63ab**
 
 ---
 
@@ -93,10 +93,30 @@
 
 ### itdog
 **➕ Добавлено**
-- —
+- adobe.io
+- adobe.net
+- anthropic.qualtrics.com
+- babepedia.com
+- backend-v2.crixet.com
+- chainreactioncycles.com
+- charhub.io
+- claude.com
+- dashboard.algolia.com
+- dashboard.gitguardian.com
+- downloads.intercomcdn.com
+- fapello.com
+- fivetran.com
+- gofund.me
+- gonift.com
+- grok.x.com
+- httptoolkit.com
+- idolcomplex.com
+- intercom.io
+- joesandbox.com
 
 **➖ Удалено**
-- —
+- capcut.com
+- dreamina.capcut.com
 
 ---
 
@@ -105,33 +125,53 @@
 - —
 
 **➖ Удалено**
-- —
+- wbagora.com
 
 ---
 
 ### итоговый список
 **➕ Добавлено**
-- —
+- adobe.io
+- adobe.net
+- anthropic.qualtrics.com
+- babepedia.com
+- backend-v2.crixet.com
+- chainreactioncycles.com
+- charhub.io
+- claude.com
+- dashboard.algolia.com
+- dashboard.gitguardian.com
+- downloads.intercomcdn.com
+- fapello.com
+- fivetran.com
+- gofund.me
+- gonift.com
+- grok.x.com
+- httptoolkit.com
+- idolcomplex.com
+- intercom.io
+- joesandbox.com
 
 **➖ Удалено**
-- —
+- capcut.com
+- dreamina.capcut.com
 
 </details>
 
 <details>
 <summary>🧪 Диагностика</summary>
 
-- источник itdog: **1123** домена (уник.)
-- v2fly extras: **707** доменов (после вычитания пересечений)
-- итог до лимита: **1830** строк
-- запас до лимита: **1170** строк
+- источник itdog: **1161** домена (уник.)
+- v2fly extras: **706** доменов (после вычитания пересечений)
+- итог до лимита: **1867** строк
+- запас до лимита: **1133** строк
 - риск переполнения лимита: **низкий 🟢**
 
 ### 📈 Тренд
-- Среднее (7): **1830**
-- Δ к прошлой: **+0**
-- Отклонение: **+0**
-- ➡ Стабильно
+- Среднее (7): **1835**
+- Δ к прошлой: **+37**
+- Отклонение: **+32**
+- 📈 Рост
 
 ### 🧠 v2fly здоровье
 - fail=0 🔴
