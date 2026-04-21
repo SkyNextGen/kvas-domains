@@ -2,7 +2,7 @@
 
 ## 🧭 Общая информация
 
-> 🕒 **Сборка:** 14 апр 2026, 06:43 МСК  
+> 🕒 **Сборка:** 21 апр 2026, 06:46 МСК  
 > 📦 **Репозиторий:** SkyNextGen/kvas-domains  
 > 📄 **Выходной файл:** `dist/inside-kvas.lst`  
 > 📏 Лимит строк: **3000**
@@ -33,12 +33,12 @@
 ### 🗂 itdog
 
 - Всего доменов: **1161**
-- Изменение: **+40 / -2**
+- Изменение: **+0 / -0**
 
 ### 🌐 v2fly (extras)
 
 - Всего extras: **706**
-- Изменение: **+0 / -1**
+- Изменение: **+0 / -0**
 - Категорий: **10**
 
 🟢 OK: 10  
@@ -48,7 +48,7 @@
 ### 📦 Итоговый список
 
 - Всего: **1867**
-- Изменение: **+39 / -2**
+- Изменение: **+0 / -0**
 - Обрезано: **0**
 
 ---
@@ -93,30 +93,10 @@
 
 ### itdog
 **➕ Добавлено**
-- adobe.io
-- adobe.net
-- anthropic.qualtrics.com
-- babepedia.com
-- backend-v2.crixet.com
-- chainreactioncycles.com
-- charhub.io
-- claude.com
-- dashboard.algolia.com
-- dashboard.gitguardian.com
-- downloads.intercomcdn.com
-- fapello.com
-- fivetran.com
-- gofund.me
-- gonift.com
-- grok.x.com
-- httptoolkit.com
-- idolcomplex.com
-- intercom.io
-- joesandbox.com
+- —
 
 **➖ Удалено**
-- capcut.com
-- dreamina.capcut.com
+- —
 
 ---
 
@@ -125,36 +105,16 @@
 - —
 
 **➖ Удалено**
-- wbagora.com
+- —
 
 ---
 
 ### итоговый список
 **➕ Добавлено**
-- adobe.io
-- adobe.net
-- anthropic.qualtrics.com
-- babepedia.com
-- backend-v2.crixet.com
-- chainreactioncycles.com
-- charhub.io
-- claude.com
-- dashboard.algolia.com
-- dashboard.gitguardian.com
-- downloads.intercomcdn.com
-- fapello.com
-- fivetran.com
-- gofund.me
-- gonift.com
-- grok.x.com
-- httptoolkit.com
-- idolcomplex.com
-- intercom.io
-- joesandbox.com
+- —
 
 **➖ Удалено**
-- capcut.com
-- dreamina.capcut.com
+- —
 
 </details>
 
@@ -168,9 +128,9 @@
 - риск переполнения лимита: **низкий 🟢**
 
 ### 📈 Тренд
-- Среднее (7): **1835**
-- Δ к прошлой: **+37**
-- Отклонение: **+32**
+- Среднее (7): **1841**
+- Δ к прошлой: **+0**
+- Отклонение: **+26**
 - 📈 Рост
 
 ### 🧠 v2fly здоровье
