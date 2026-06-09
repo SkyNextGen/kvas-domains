@@ -1,10 +1,10 @@
 {
-  "build_time_utc": "2026-06-02T05:01:06Z",
+  "build_time_utc": "2026-06-09T04:36:38Z",
   "repo": "SkyNextGen/kvas-domains",
   "output": "dist/inside-kvas.lst",
   "max_lines": 3000,
   "near_limit_threshold": 2900,
-  "sha256_final": "03db9dfff3494c196b3f96b86849dac6e7c39fcec4390f0d9db054ba571f63ab",
+  "sha256_final": "aa2a1a30d525e56ce0a13a6422bbec2e9b0a8dbfca2334616d5756a52d586c3d",
   "itdog_domains": [
     "10minutemail.com",
     "1337x.to",
@@ -1613,6 +1613,7 @@
     "myfbfans.com",
     "newsfeed.com",
     "nextstop.com",
+    "oaistatsig.com",
     "oninstagram.com",
     "online-deals.net",
     "online-instagram.com",
@@ -1653,6 +1654,7 @@
     "thefind.com",
     "theinstagramhack.com",
     "ton.org",
+    "toncenter.com",
     "toplayerserver.com",
     "turn.livekit.cloud",
     "tx.me",
@@ -3482,6 +3484,7 @@
     "myfbfans.com",
     "newsfeed.com",
     "nextstop.com",
+    "oaistatsig.com",
     "oninstagram.com",
     "online-deals.net",
     "online-instagram.com",
@@ -3522,6 +3525,7 @@
     "thefind.com",
     "theinstagramhack.com",
     "ton.org",
+    "toncenter.com",
     "toplayerserver.com",
     "turn.livekit.cloud",
     "tx.me",
@@ -3746,8 +3750,8 @@
     "zuckerberg.net"
   ],
   "itdog_total": 1161,
-  "v2fly_total": 706,
-  "final_total": 1867,
+  "v2fly_total": 708,
+  "final_total": 1869,
   "truncated": 0,
   "bad_output_lines": 0,
   "truncated_yesno": "НЕТ",
@@ -3785,8 +3789,8 @@
       "url": "https://raw.githubusercontent.com/v2fly/domain-list-community/master/data/instagram"
     },
     "openai": {
-      "valid_domains": 16,
-      "extras_added": 9,
+      "valid_domains": 17,
+      "extras_added": 10,
       "invalid_lines": 2,
       "skipped_directives": 1,
       "status": "OK",
@@ -3794,8 +3798,8 @@
       "url": "https://raw.githubusercontent.com/v2fly/domain-list-community/master/data/openai"
     },
     "telegram": {
-      "valid_domains": 20,
-      "extras_added": 20,
+      "valid_domains": 21,
+      "extras_added": 21,
       "invalid_lines": 0,
       "skipped_directives": 0,
       "status": "OK",

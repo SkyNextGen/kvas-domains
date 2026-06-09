@@ -3,8 +3,8 @@ cats: discord, instagram, openai, telegram, whatsapp, youtube, facebook, wbgames
 
 [discord] status=OK valid=28 invalid=0 skipped=0
 [instagram] status=OK valid=72 invalid=2 skipped=0
-[openai] status=OK valid=16 invalid=2 skipped=1
-[telegram] status=OK valid=20 invalid=0 skipped=0
+[openai] status=OK valid=17 invalid=2 skipped=1
+[telegram] status=OK valid=21 invalid=0 skipped=0
 [whatsapp] status=OK valid=11 invalid=2 skipped=0
 [youtube] status=OK valid=175 invalid=3 skipped=0
 [facebook] status=OK valid=394 invalid=3 skipped=0
