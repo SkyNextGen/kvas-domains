@@ -2,7 +2,7 @@
 
 ## 🧭 Общая информация
 
-> 🕒 **Сборка:** 23 июн 2026, 07:30 МСК  
+> 🕒 **Сборка:** 30 июн 2026, 07:34 МСК  
 > 📦 **Репозиторий:** SkyNextGen/kvas-domains  
 > 📄 **Выходной файл:** `dist/inside-kvas.lst`  
 > 📏 Лимит строк: **3000**
@@ -33,7 +33,7 @@
 ### 🗂 itdog
 
 - Всего доменов: **1181**
-- Изменение: **+23 / -3**
+- Изменение: **+0 / -0**
 
 ### 🌐 v2fly (extras)
 
@@ -48,7 +48,7 @@
 ### 📦 Итоговый список
 
 - Всего: **1889**
-- Изменение: **+23 / -3**
+- Изменение: **+0 / -0**
 - Обрезано: **0**
 
 ---
@@ -93,31 +93,10 @@
 
 ### itdog
 **➕ Добавлено**
-- adguard-vpn.com
-- cursor-cdn.com
-- cursor.sh
-- cursorapi.com
-- europesays.com
-- framer.app
-- framercanvas.com
-- framercdn.com
-- framerstatic.com
-- framerusercontent.com
-- incy.cc
-- jetbrains.team
-- manga-chan.me
-- mmcdn.com
-- paywithmoon.com
-- qobuz.com
-- sharefile.com
-- sharefile.io
-- sigsauer.com
-- syslog-ng.com
+- —
 
 **➖ Удалено**
-- app.zerossl.com
-- jw-russia.org
-- jw.org
+- —
 
 ---
 
@@ -132,31 +111,10 @@
 
 ### итоговый список
 **➕ Добавлено**
-- adguard-vpn.com
-- cursor-cdn.com
-- cursor.sh
-- cursorapi.com
-- europesays.com
-- framer.app
-- framercanvas.com
-- framercdn.com
-- framerstatic.com
-- framerusercontent.com
-- incy.cc
-- jetbrains.team
-- manga-chan.me
-- mmcdn.com
-- paywithmoon.com
-- qobuz.com
-- sharefile.com
-- sharefile.io
-- sigsauer.com
-- syslog-ng.com
+- —
 
 **➖ Удалено**
-- app.zerossl.com
-- jw-russia.org
-- jw.org
+- —
 
 </details>
 
@@ -170,9 +128,9 @@
 - риск переполнения лимита: **низкий 🟢**
 
 ### 📈 Тренд
-- Среднее (7): **1871**
-- Δ к прошлой: **+20**
-- Отклонение: **+18**
+- Среднее (7): **1874**
+- Δ к прошлой: **+0**
+- Отклонение: **+15**
 - ➡ Стабильно
 
 ### 🧠 v2fly здоровье
