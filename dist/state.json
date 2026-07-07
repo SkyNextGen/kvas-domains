@@ -1,10 +1,10 @@
 {
-  "build_time_utc": "2026-06-30T04:34:39Z",
+  "build_time_utc": "2026-07-07T04:17:29Z",
   "repo": "SkyNextGen/kvas-domains",
   "output": "dist/inside-kvas.lst",
   "max_lines": 3000,
   "near_limit_threshold": 2900,
-  "sha256_final": "0ed372a5542963908a44a7c91c157672ff0b80631da8f42a4769b23eb9308c98",
+  "sha256_final": "35f12f9e71a96531c884ab6fb3baf698dd7189551b0d761c0726e5b03b78ac51",
   "itdog_domains": [
     "10minutemail.com",
     "1337x.to",
@@ -1640,6 +1640,7 @@
     "onlineinstagram.com",
     "openai.com.cdn.cloudflare.net",
     "openaiapi-site.azureedge.net",
+    "openaiassets.blob.core.windows.net",
     "openaicom-api-bdcpf8c6d2e9atf6.z01.azurefd.net",
     "openaicom.imgix.net",
     "openaicomproductionae4b.blob.core.windows.net",
@@ -3531,6 +3532,7 @@
     "onlineinstagram.com",
     "openai.com.cdn.cloudflare.net",
     "openaiapi-site.azureedge.net",
+    "openaiassets.blob.core.windows.net",
     "openaicom-api-bdcpf8c6d2e9atf6.z01.azurefd.net",
     "openaicom.imgix.net",
     "openaicomproductionae4b.blob.core.windows.net",
@@ -3790,8 +3792,8 @@
     "zuckerberg.net"
   ],
   "itdog_total": 1181,
-  "v2fly_total": 708,
-  "final_total": 1889,
+  "v2fly_total": 709,
+  "final_total": 1890,
   "truncated": 0,
   "bad_output_lines": 0,
   "truncated_yesno": "НЕТ",
@@ -3829,9 +3831,9 @@
       "url": "https://raw.githubusercontent.com/v2fly/domain-list-community/master/data/instagram"
     },
     "openai": {
-      "valid_domains": 17,
-      "extras_added": 10,
-      "invalid_lines": 2,
+      "valid_domains": 18,
+      "extras_added": 11,
+      "invalid_lines": 3,
       "skipped_directives": 1,
       "status": "OK",
       "error": "",
