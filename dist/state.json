@@ -1,10 +1,10 @@
 {
-  "build_time_utc": "2026-08-04T03:39:29Z",
+  "build_time_utc": "2026-08-11T02:28:41Z",
   "repo": "SkyNextGen/kvas-domains",
   "output": "dist/inside-kvas.lst",
   "max_lines": 3000,
   "near_limit_threshold": 2900,
-  "sha256_final": "2b05ae01de84c3a8c9185aa647f65965f3bd99dae6896f96a131a05b76345ff4",
+  "sha256_final": "1f636daa45a8e295198df3dc56b39047c24687fe1541afcd9ec269a5bb4b5f83",
   "itdog_domains": [
     "10minutemail.com",
     "1337x.to",
@@ -1654,7 +1654,6 @@
     "quiz.directory",
     "reachtheworldonfacebook.com",
     "redkix.com",
-    "rocksdb.org",
     "shopfacebook.com",
     "sportsfacebook.com",
     "sportstream.com",
@@ -3547,7 +3546,6 @@
     "quiz.directory",
     "reachtheworldonfacebook.com",
     "redkix.com",
-    "rocksdb.org",
     "shopfacebook.com",
     "sportsfacebook.com",
     "sportstream.com",
@@ -3794,8 +3792,8 @@
     "zuckerberg.net"
   ],
   "itdog_total": 1181,
-  "v2fly_total": 710,
-  "final_total": 1891,
+  "v2fly_total": 709,
+  "final_total": 1890,
   "truncated": 0,
   "bad_output_lines": 0,
   "truncated_yesno": "НЕТ",
@@ -3869,8 +3867,8 @@
       "url": "https://raw.githubusercontent.com/v2fly/domain-list-community/master/data/youtube"
     },
     "facebook": {
-      "valid_domains": 394,
-      "extras_added": 389,
+      "valid_domains": 393,
+      "extras_added": 388,
       "invalid_lines": 3,
       "skipped_directives": 0,
       "status": "OK",

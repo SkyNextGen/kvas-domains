@@ -7,7 +7,7 @@ cats: discord, instagram, openai, telegram, whatsapp, youtube, facebook, wbgames
 [telegram] status=OK valid=21 invalid=0 skipped=0
 [whatsapp] status=OK valid=11 invalid=2 skipped=0
 [youtube] status=OK valid=175 invalid=3 skipped=0
-[facebook] status=OK valid=394 invalid=3 skipped=0
+[facebook] status=OK valid=393 invalid=3 skipped=0
 [wbgames] status=OK valid=6 invalid=0 skipped=0
 [pornhub] status=OK valid=9 invalid=0 skipped=0
 [ubisoft] status=OK valid=31 invalid=1 skipped=0
