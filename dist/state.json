@@ -1,5 +1,5 @@
 {
-  "build_time_utc": "2026-08-18T01:51:32Z",
+  "build_time_utc": "2026-08-25T01:53:12Z",
   "repo": "SkyNextGen/kvas-domains",
   "output": "dist/inside-kvas.lst",
   "max_lines": 3000,
@@ -3896,7 +3896,7 @@
     "ubisoft": {
       "valid_domains": 31,
       "extras_added": 31,
-      "invalid_lines": 1,
+      "invalid_lines": 0,
       "skipped_directives": 0,
       "status": "OK",
       "error": "",

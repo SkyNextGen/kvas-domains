@@ -10,4 +10,4 @@ cats: discord, instagram, openai, telegram, whatsapp, youtube, facebook, wbgames
 [facebook] status=OK valid=393 invalid=3 skipped=0
 [wbgames] status=OK valid=6 invalid=0 skipped=0
 [pornhub] status=OK valid=9 invalid=0 skipped=0
-[ubisoft] status=OK valid=31 invalid=1 skipped=0
+[ubisoft] status=OK valid=31 invalid=0 skipped=0
