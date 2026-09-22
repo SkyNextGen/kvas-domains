@@ -1,10 +1,10 @@
 {
-  "build_time_utc": "2026-09-15T04:57:53Z",
+  "build_time_utc": "2026-09-22T05:00:45Z",
   "repo": "SkyNextGen/kvas-domains",
   "output": "dist/inside-kvas.lst",
   "max_lines": 3000,
   "near_limit_threshold": 2900,
-  "sha256_final": "1f636daa45a8e295198df3dc56b39047c24687fe1541afcd9ec269a5bb4b5f83",
+  "sha256_final": "aa2e461c62827e5baf92f62ba3933204cc3d02de30b0e6222f6f0b8d95d0df20",
   "itdog_domains": [
     "10minutemail.com",
     "1337x.to",
@@ -1669,6 +1669,7 @@
     "telegram.space",
     "telesco.pe",
     "terragraph.com",
+    "tfbnw.net",
     "tg.dev",
     "thefacebook.com",
     "thefacebook.net",
@@ -3561,6 +3562,7 @@
     "telegram.space",
     "telesco.pe",
     "terragraph.com",
+    "tfbnw.net",
     "tg.dev",
     "thefacebook.com",
     "thefacebook.net",
@@ -3792,8 +3794,8 @@
     "zuckerberg.net"
   ],
   "itdog_total": 1181,
-  "v2fly_total": 709,
-  "final_total": 1890,
+  "v2fly_total": 710,
+  "final_total": 1891,
   "truncated": 0,
   "bad_output_lines": 0,
   "truncated_yesno": "НЕТ",
@@ -3867,8 +3869,8 @@
       "url": "https://raw.githubusercontent.com/v2fly/domain-list-community/master/data/youtube"
     },
     "facebook": {
-      "valid_domains": 393,
-      "extras_added": 388,
+      "valid_domains": 394,
+      "extras_added": 389,
       "invalid_lines": 3,
       "skipped_directives": 0,
       "status": "OK",
